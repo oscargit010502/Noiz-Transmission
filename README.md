@@ -9,6 +9,8 @@ también en Linux con Python, PySide6, NumPy, SciPy y PyQtGraph.
 amortiguamiento y cámaras. La exactitud respecto a sistemas comerciales todavía
 requiere validación experimental; los resultados no equivalen a un ensayo.
 
+![Editor V2 con un proyecto sintético calculado](docs/images/workbench-v2.png)
+
 ## Abrir la aplicación
 
 Instala [uv](https://docs.astral.sh/uv/getting-started/installation/), extrae el

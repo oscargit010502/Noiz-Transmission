@@ -99,10 +99,12 @@ usa la carpeta extraída del ZIP.
 
 ## GitHub y verificación
 
-Los ZIP contienen los archivos de esta entrega. Crear archivos en la nube no
-los envía automáticamente a GitHub: hace falta un commit y push a una rama,
-seguido de la revisión que corresponda. La implementación todavía no ha sido
-publicada en el repositorio remoto.
+El código V2 está publicado en la rama
+[`codex/noiz-transmission-v2`](https://github.com/oscargit010502/Noiz-Transmission/tree/codex/noiz-transmission-v2).
+Abre ese enlace para ver las carpetas; si entras en la portada del repositorio,
+selecciona esa rama en el selector que muestra `main`. También puedes descargar
+el código desde **Code → Download ZIP**. Tus catálogos están en el paquete
+personal de esta conversación y no forman parte de la rama pública.
 
 Las comprobaciones de esta entrega se realizan en Linux, incluida la interfaz
 Qt sin pantalla. Windows tiene una configuración de CI preparada, pero todavía
