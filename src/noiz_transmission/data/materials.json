@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "catalog_version": "2026.10-synthetic-1",
+  "materials": [
+    {
+      "id": "synthetic-light-panel",
+      "name": "Panel ligero — ejemplo sintético",
+      "density_kg_m3": 800.0,
+      "young_modulus_pa": 2500000000.0,
+      "poisson_ratio": 0.25,
+      "region": "Internacional / sin fabricante",
+      "source": "Valores definidos por el proyecto para verificación numérica; no son una ficha comercial.",
+      "data_status": "synthetic",
+      "source_url": null,
+      "source_date": "2026-10-13",
+      "license": "MIT",
+      "version": "1",
+      "uncertainty": "No evaluada; no utilizar como caracterización de un producto comercial."
+    },
+    {
+      "id": "synthetic-dense-panel",
+      "name": "Panel denso — ejemplo sintético",
+      "density_kg_m3": 2400.0,
+      "young_modulus_pa": 30000000000.0,
+      "poisson_ratio": 0.2,
+      "region": "Internacional / sin fabricante",
+      "source": "Valores definidos por el proyecto para verificación numérica; no son una ficha comercial.",
+      "data_status": "synthetic",
+      "source_url": null,
+      "source_date": "2026-10-13",
+      "license": "MIT",
+      "version": "1",
+      "uncertainty": "No evaluada; no utilizar como caracterización de un producto comercial."
+    },
+    {
+      "id": "synthetic-glazing-panel",
+      "name": "Placa rígida — ejemplo sintético",
+      "density_kg_m3": 2500.0,
+      "young_modulus_pa": 70000000000.0,
+      "poisson_ratio": 0.22,
+      "region": "Internacional / sin fabricante",
+      "source": "Valores definidos por el proyecto para verificación numérica; no son una ficha comercial.",
+      "data_status": "synthetic",
+      "source_url": null,
+      "source_date": "2026-10-13",
+      "license": "MIT",
+      "version": "1",
+      "uncertainty": "No evaluada; no utilizar como caracterización de un producto comercial."
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "noiz-transmission"
+version = "0.2.0"
+description = "Open, reproducible building-element sound insulation research workbench"
+readme = "README.md"
+requires-python = ">=3.13,<3.15"
+license = "MIT"
+authors = [{ name = "Noiz Transmission contributors" }]
+dependencies = ["numpy>=2.4.4,<3", "scipy>=1.18,<2"]
+
+[project.optional-dependencies]
+desktop = ["PySide6-Essentials>=6.10.3,<6.11", "pyqtgraph>=0.13.7,<0.15"]
+validation = ["phonometry==3.3.0"]
+dev = ["pytest>=8.3,<10", "ruff>=0.11,<1", "build>=1.2,<2"]
+
+[project.scripts]
+noiz = "noiz_transmission.cli:main"
+
+[project.gui-scripts]
+noiz-transmission = "noiz_transmission.ui:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/noiz_transmission"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]

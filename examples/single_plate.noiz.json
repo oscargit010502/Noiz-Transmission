@@ -1,0 +1,79 @@
+{
+  "schema_version": 2,
+  "model_name": "transfer-matrix-plate-1",
+  "project": {
+    "name": "Placa simple · ejemplo sintético",
+    "panels": [
+      {
+        "layers": [
+          {
+            "name": "Panel ligero — ejemplo sintético",
+            "thickness_mm": 12.5,
+            "density_kg_m3": 800.0,
+            "young_modulus_pa": 2500000000.0,
+            "loss_factor": 0.03,
+            "poisson_ratio": 0.25,
+            "count": 1,
+            "catalog_entry": {
+              "id": "noiz:synthetic-light-panel",
+              "kind": "material",
+              "name": "Panel ligero — ejemplo sintético",
+              "category": "Referencia sintética",
+              "manufacturer": "Sin fabricante",
+              "countries": [
+                "Internacional / sin fabricante"
+              ],
+              "properties": {
+                "density_kg_m3": 800.0,
+                "thickness_m": 0.0125,
+                "young_modulus_pa": 2500000000.0,
+                "poisson_ratio": 0.25,
+                "loss_factor": 0.03,
+                "material_type": "Isotropic",
+                "solid_model_eligible": true,
+                "measurement_verified": false,
+                "data_status": "synthetic",
+                "loss_factor_source": "Hipótesis del usuario; V1 no contiene amortiguamiento"
+              },
+              "raw_fields": {
+                "id": "\"synthetic-light-panel\"",
+                "name": "\"Panel ligero — ejemplo sintético\"",
+                "density_kg_m3": "800.0",
+                "young_modulus_pa": "2500000000.0",
+                "poisson_ratio": "0.25",
+                "region": "\"Internacional / sin fabricante\"",
+                "source": "\"Valores definidos por el proyecto para verificación numérica; no son una ficha comercial.\"",
+                "data_status": "\"synthetic\"",
+                "source_url": "null",
+                "source_date": "\"2026-10-13\"",
+                "license": "\"MIT\"",
+                "version": "\"1\"",
+                "uncertainty": "\"No evaluada; no utilizar como caracterización de un producto comercial.\""
+              },
+              "source_file": "noiz-v1-material-snapshot",
+              "source_sha256": "ed0ba372c3d516f76d268b241207b7b01a74c4a97aaad93fe71fd0f2b03f2f98",
+              "original_id": "synthetic-light-panel",
+              "warnings": [
+                "Procedencia: Valores definidos por el proyecto para verificación numérica; no son una ficha comercial.",
+                "Incertidumbre: No evaluada; no utilizar como caracterización de un producto comercial."
+              ]
+            },
+            "profile": null
+          }
+        ],
+        "name": "Panel 1"
+      }
+    ],
+    "cavities": [],
+    "element_type": "wall",
+    "width_m": 2.4,
+    "height_m": 2.7,
+    "incidence": "diffuse",
+    "air_density_kg_m3": 1.21,
+    "sound_speed_m_s": 343,
+    "limiting_angle_deg": 78,
+    "leak_percentage": 0,
+    "floor_cover": null,
+    "notes": "Placa isotrópica sintética independiente de 12.5 mm. Factor de pérdidas supuesto 0.03. Ejemplo numérico; no representa un producto comercial."
+  }
+}

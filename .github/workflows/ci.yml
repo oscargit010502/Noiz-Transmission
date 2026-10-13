@@ -1,0 +1,38 @@
+name: Verification
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: "3.13"
+      - name: Install Qt runtime libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libopengl0 libxkbcommon0
+      - run: uv sync --locked --all-extras
+      - run: uv run ruff check .
+      - run: uv run pytest
+      - run: uv run noiz predict examples/single_panel.noiz.json --output-dir artifacts/example
+      - run: uv run noiz assembly examples/double_leaf.noiz.json --output-dir artifacts/v2
+      - run: uv run python -m build --installer uv
+      - uses: actions/upload-artifact@v4
+        with:
+          name: noiz-${{ runner.os }}
+          path: |
+            dist/*
+            artifacts/example/*
+            artifacts/v2/*

@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "data_status": "analytical_not_experimental",
+  "source": "Derivaciones algebraicas del proyecto documentadas en docs/theory.md; constantes calculadas con math de Python, sin importar el motor.",
+  "date": "2026-10-13",
+  "license": "MIT",
+  "default_air": {
+    "air_density_kg_m3": 1.21,
+    "sound_speed_m_s": 343.0
+  },
+  "cases": [
+    {
+      "id": "surface-density-product",
+      "function": "surface_density",
+      "inputs": {
+        "density_kg_m3": 1000.0,
+        "thickness_m": 0.01
+      },
+      "expected": 10.0,
+      "unit": "kg/m2",
+      "derivation": "1000 × 0.01 = 10",
+      "absolute_tolerance": 1e-10
+    },
+    {
+      "id": "normal-equal-impedances-x1",
+      "function": "mass_law_normal_tl",
+      "inputs": {
+        "frequencies_hz": 13.210815206285863,
+        "surface_density_kg_m2": 10.0
+      },
+      "expected": 3.010299956639812,
+      "unit": "dB",
+      "derivation": "f = rho_air*c/(pi*m); x=1; TL = 10 log10(2)",
+      "absolute_tolerance": 1e-10
+    },
+    {
+      "id": "normal-x10",
+      "function": "mass_law_normal_tl",
+      "inputs": {
+        "frequencies_hz": 132.10815206285864,
+        "surface_density_kg_m2": 10.0
+      },
+      "expected": 20.043213737826427,
+      "unit": "dB",
+      "derivation": "f = 10*rho_air*c/(pi*m); x=10; TL = 10 log10(101)",
+      "absolute_tolerance": 1e-10
+    },
+    {
+      "id": "diffuse-sixty-degrees-x1",
+      "function": "mass_law_diffuse_tl",
+      "inputs": {
+        "frequencies_hz": 13.210815206285863,
+        "surface_density_kg_m2": 10.0,
+        "limiting_angle_deg": 60.0
+      },
+      "expected": 2.029600519340441,
+      "unit": "dB",
+      "derivation": "x=1; cos²60°=1/4; sin²60°=3/4; mean_tau = ln(8/5)/(3/4)",
+      "absolute_tolerance": 1e-10
+    },
+    {
+      "id": "diffuse-hemisphere-x1",
+      "function": "mass_law_diffuse_tl",
+      "inputs": {
+        "frequencies_hz": 13.210815206285863,
+        "surface_density_kg_m2": 10.0,
+        "limiting_angle_deg": 90.0
+      },
+      "expected": 1.591745389548616,
+      "unit": "dB",
+      "derivation": "x=1; theta=90°; mean_tau=ln(2)",
+      "absolute_tolerance": 1e-10
+    },
+    {
+      "id": "isotropic-plate-critical-frequency",
+      "function": "critical_frequency",
+      "inputs": {
+        "density_kg_m3": 1000.0,
+        "thickness_m": 0.01,
+        "young_modulus_pa": 12000000000.0,
+        "poisson_ratio": 0.0
+      },
+      "expected": 1872.4419899818395,
+      "unit": "Hz",
+      "derivation": "m=10 kg/m²; D=1000 N m; sqrt(m/D)=0.1 s/m²; fc = 343²/(20*pi)",
+      "absolute_tolerance": 1e-10
+    },
+    {
+      "id": "symmetric-mass-air-mass",
+      "function": "mass_air_mass_resonance",
+      "inputs": {
+        "mass_1_kg_m2": 10.0,
+        "mass_2_kg_m2": 10.0,
+        "cavity_depth_m": 0.1
+      },
+      "expected": 84.92233652151904,
+      "unit": "Hz",
+      "derivation": "(1/10+1/10)/0.1=2; f0=sqrt(2*rho_air*c²)/(2*pi)",
+      "absolute_tolerance": 1e-10
+    },
+    {
+      "id": "tau-to-tl-one-tenth",
+      "function": "tau_to_tl",
+      "inputs": {
+        "transmission_coefficient": 0.1
+      },
+      "expected": 10.0,
+      "unit": "dB",
+      "derivation": "-10 log10(1/10)=10",
+      "absolute_tolerance": 1e-10
+    },
+    {
+      "id": "tl-to-tau-ten-decibels",
+      "function": "tl_to_tau",
+      "inputs": {
+        "transmission_loss_db": 10.0
+      },
+      "expected": 0.1,
+      "unit": "1",
+      "derivation": "10^(-10/10)=1/10",
+      "absolute_tolerance": 1e-10
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "project": {
+    "name": "Panel ligero sintético · 25 mm",
+    "material_id": "synthetic-light-panel",
+    "thickness_mm": 25.0,
+    "model": "diffuse_mass_law",
+    "air_density_kg_m3": 1.21,
+    "sound_speed_m_s": 343.0,
+    "limiting_angle_deg": 78.0,
+    "material_snapshot": {
+      "id": "synthetic-light-panel",
+      "name": "Panel ligero — ejemplo sintético",
+      "density_kg_m3": 800.0,
+      "young_modulus_pa": 2500000000.0,
+      "poisson_ratio": 0.25,
+      "region": "Internacional / sin fabricante",
+      "source": "Valores definidos por el proyecto para verificación numérica; no son una ficha comercial.",
+      "data_status": "synthetic",
+      "source_url": null,
+      "source_date": "2026-10-13",
+      "license": "MIT",
+      "version": "1",
+      "uncertainty": "No evaluada; no utilizar como caracterización de un producto comercial."
+    },
+    "model_version": "mass-law-1",
+    "catalog_version": "2026.10-synthetic-1"
+  }
+}
