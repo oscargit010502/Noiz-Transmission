@@ -1,7 +1,9 @@
 # Modelo físico y clasificación
 
-La versión 2 implementa un modelo propio de transmisión aérea por placas
-isótropas infinitas y cámaras, identificado como `transfer-matrix-plate-1`.
+La versión 3 (0.3.0) amplía el modelo propio de transmisión aérea por placas
+isótropas infinitas, cámaras con gas y capas porosas. El identificador se mantiene
+como `transfer-matrix-plate-1`; para reproducir una ejecución también es necesario
+guardar la versión de software o commit, porque ese nombre no distingue V2/V3.
 La ruta histórica v1, `mass-law-1`, permanece disponible. Ninguna ruta reproduce
 los algoritmos internos de INSUL ni hereda su precisión declarada.
 
@@ -25,7 +27,7 @@ Se adopta dependencia temporal `exp(jωt)` y onda progresiva `exp(−jkz)`.
 Un número de onda de medio pasivo tiene parte imaginaria no positiva. Todas las
 conversiones de mm/GPa a m/Pa se realizan antes del cálculo físico.
 
-## V2: placa infinita con masa, flexión y pérdidas
+## Placa infinita con masa, flexión y pérdidas
 
 Para una placa delgada homogénea:
 
@@ -48,14 +50,16 @@ La frecuencia crítica ideal, en el límite de incidencia rasante, es:
 fc = c0²/(2π) × sqrt(m'/D)
 ```
 
-La curva v2 incorpora la flexión. Esta frecuencia sigue siendo un diagnóstico de
+La curva V2/V3 incorpora la flexión. Esta frecuencia sigue siendo un diagnóstico de
 placa ideal: no es un modo propio de una placa finita ni un dato experimental.
 El modelo no incorpora cizalladura en placas gruesas, condiciones de borde,
 radiación finita, dimensiones modales o amortiguamiento de fijaciones.
 
 ### Varias capas dentro de una hoja
 
-Una hoja admite hasta seis capas, cada una con cantidad `n_i`. Se supone que
+Una hoja admite hasta seis capas, cada una con cantidad `n_i` entre 1 y 10.
+Las capas desactivadas se conservan en el proyecto y se excluyen de estas sumas.
+Se supone que
 comparten desplazamiento transversal y permiten deslizamiento relativo en el plano:
 
 ```text
@@ -69,9 +73,10 @@ Dos capas iguales conservan la relación `m'/D` y, por tanto, `fc`; una placa
 monolítica del doble de espesor no es equivalente. No es un modelo de unión
 adhesiva continua, núcleo sándwich o lámina viscoelástica de vidrio laminado.
 
-## V2: cámaras de aire y relleno poroso
+## Cámaras de aire o gas y relleno poroso
 
-Se admiten una a tres hojas, con exactamente una cámara entre hojas consecutivas.
+Se admiten una a cuatro hojas, con exactamente una cámara entre hojas consecutivas.
+La configuración Quad comprende cuatro hojas y tres cámaras, no cuatro cámaras.
 El modelo incluye el camino aéreo; no introduce puentes estructurales de montantes.
 
 Para un fluido con número de onda `k`, impedancia característica `Zc` y espesor `d`:
@@ -86,7 +91,35 @@ F = [[cos(kz d), jZn sin(kz d)],
 En aire `k = ω/c0`, `Zc = ρ0c0`. Se conserva la componente tangencial `kt` en
 cada interfaz. Una cámara parcialmente rellena se representa como aire, absorbente
 y aire, repartiendo por igual el espesor de aire restante a ambos lados del relleno.
-No se modela contacto mecánico del absorbente con las hojas.
+No se modela contacto mecánico del absorbente con las hojas. En el editor, el
+espesor efectivo del relleno es cantidad por espesor unitario; cantidad cero lo
+excluye sin borrar las propiedades guardadas.
+
+### Gases de cámara
+
+Aire usa `ρ0` y `c0` exteriores. Para argón, kriptón y xenón la aplicación obtiene
+propiedades de gas puro ideal a `T = 293.15 K` y `P = 101325 Pa`:
+
+```text
+ρg = P M / (R T)
+cg = sqrt(γ R T / M)
+k = ω/cg
+Zc = ρg cg
+```
+
+`R = 8.31446261815324 J/(mol·K)`, `γ = 5/3` para estos gases monoatómicos y masas
+molares de 0.039948, 0.083798 y 0.131293 kg/mol respectivamente. La API física
+permite introducir directamente densidad/velocidad de un gas, o cambiar T/P al
+consultar `ideal_gas_properties`; esos parámetros no son controles ambientales
+por cámara del editor V3. La misma función admite aire ideal con
+`M = 0.02896546 kg/mol`, `γ = 1.4`, pero seleccionar Air en el proyecto conserva
+los valores exteriores configurados.
+
+El medio exterior continúa siendo aire. Se conserva `kt` exterior en cada cámara;
+la raíz compleja `kz` incorpora propagación evanescente cuando corresponda. La
+matriz usa el límite finito al aproximarse `kz` a cero. No se modelan mezclas,
+humedad, gradientes térmicos o pérdidas termoviscosas del gas. El relleno Miki,
+ajustado para aire, se rechaza si se intenta combinar con un gas noble.
 
 ### Fluido equivalente de Miki
 
@@ -112,7 +145,22 @@ consultada no confirma tal correspondencia. La densidad por sí sola tampoco se
 convierte en resistividad. Referencias y estado de lectura:
 [v2-reference-review.md](v2-reference-review.md).
 
-## V2: transmisión y promedio energético
+### Facing y lámina Porous independiente
+
+`Facing` agrega una capa Miki al lado incidente de un único panel sólido. Su
+matriz se multiplica antes de la placa; no se convierte en masa o rigidez de
+placa. El espesor efectivo es cantidad por espesor unitario. Se excluye al
+desactivar Facing o asignar cantidad cero. La aplicación rechaza Facing activo
+con más de una hoja o simultáneamente con el modo Porous.
+
+`Porous` calcula la transmisión a través de una lámina Miki libre entre dos
+semiespacios de aire. Usa espesor y resistividad explícitos, sin placa ni respaldo
+rígido. Las capas sólidas que puedan conservarse en el proyecto no participan.
+Su resultado es TL aéreo, no coeficiente de absorción. La masa superficial se
+informa como cero en el contrato numérico porque no se infiere una masa sólida de
+la resistividad; no debe interpretarse como densidad real nula del absorbente.
+
+## Transmisión y promedio energético
 
 Multiplicar matrices en orden desde el lado emisor produce `T = P1 F1 P2 …`.
 Con el mismo aire a ambos lados y `Za = ρ0c0/cosθ`:
@@ -135,7 +183,7 @@ el modelo frente a un laboratorio particular. La API admite hasta 90°.
 
 ### Bandas de tercio de octava
 
-La salida usa etiquetas nominales de 50 a 5000 Hz, pero la integración v2 emplea
+La salida usa etiquetas nominales de 50 a 5000 Hz, pero la integración V2/V3 emplea
 centros exactos base 10 y límites exactos:
 
 ```text
@@ -148,7 +196,7 @@ TLbanda = −10 log10(τbanda)
 
 Se supone **potencia incidente uniforme por Hz** dentro de cada banda. Otro
 espectro incidente necesita otro peso. No se promedian niveles dB ni se usa el
-valor en el centro nominal como sustituto de la integral v2.
+valor en el centro nominal como sustituto de la integral en banda.
 
 La integración localiza primero las resonancias mediante raíces de los términos
 complejos de reflexión y transmisión y subdivide su entorno según su anchura.
@@ -163,10 +211,21 @@ cumple la convergencia o la pasividad se informa un error. No se devuelven curva
 fabricadas mediante recorte de resultados físicamente imposibles. Los cálculos
 admiten cancelación cooperativa para cerrar el editor durante la integración.
 
+### Resumen por octavas
+
+Se reúnen los tercios contiguos en siete bandas nominales de 63 a 4000 Hz. Con
+`Δfi` igual al ancho exacto del tercio, el resumen calcula
+`τoct = Σ(Δfi · 10^(−TLi/10))/ΣΔfi` y `TLoct = −10 log10(τoct)`.
+Conserva la hipótesis de potencia uniforme por Hz; no promedia dB.
+
 ## Abertura ideal y diagnósticos
 
-Para una fracción abierta `p = leak_percentage/100` se admite una combinación
-energética ideal de áreas, con transmisión unitaria por la abertura:
+V3 admite una abertura geométrica con método explícito `open_area`: para Slit,
+`Sabertura = altura × longitud`; para Aperture, `Sabertura = π radio²`. Tras
+convertir mm a m, `p = Sabertura/(ancho × alto del elemento)`. Se exige `0 < p ≤ 1`
+al activarla. Sigue disponible la entrada histórica
+`p = leak_percentage/100`, pero no se permite activarla simultáneamente con una
+fuga geométrica. La combinación ideal con transmisión unitaria por abertura es:
 
 ```text
 τtotal = (1 − p) τplacas + p
@@ -175,11 +234,15 @@ TLtotal = −10 log10(τtotal)
 
 A altas prestaciones el límite es `−10 log10(p)` dB cuando `p > 0`. No es un
 modelo de rendijas o agujeros con difracción, profundidad, sellos o resonancias.
-No reproduce las rutinas de fugas de INSUL.
+No reproduce las rutinas de fugas de INSUL. Los controles Gomperts y Mechel,
+posición, profundidad, masas de sellado y relleno se guardan, pero elegir esos
+métodos bloquea el cálculo; no se sustituyen silenciosamente por `open_area`.
+Véase la evidencia disponible en [referencias V3](v3-reference-review.md).
 
-La masa superficial informada suma solo placas sólidas, sin masa de estructura
-ni de absorbente. Ancho y alto son metadatos geométricos: no modifican la curva
-del modelo infinito. El espesor total incluye placas y cámaras.
+La masa superficial informada suma solo placas sólidas activas, sin masa de
+estructura, absorbente de cámara o Facing. Ancho y alto no modifican el modelo
+infinito; sí cambian el área relativa de una fuga geométrica. El espesor total
+incluye placas y cámaras, más Facing activo; en Porous es el espesor de la lámina.
 
 Para dos hojas, el diagnóstico concentrado de aire sin pérdidas es:
 
@@ -187,10 +250,11 @@ Para dos hojas, el diagnóstico concentrado de aire sin pérdidas es:
 f0 = sqrt[(ρ0c0²/d)(1/m'1 + 1/m'2)] / (2π)
 ```
 
-Para tres hojas se usa la cadena acoplada de masas y muelles de aire: cada cámara
-aporta rigidez `s_i = ρ0c0²/d_i` a las dos masas vecinas. Las raíces de los
-autovalores no nulos de `M^−1/2 K M^−1/2`, divididas por `2π`, dan las dos
-frecuencias diagnósticas. Se excluye el modo de traslación de frecuencia cero.
+Para dos, tres o cuatro hojas se usa la cadena acoplada de masas y muelles de gas:
+cada cámara aporta rigidez `s_i = ρg cg²/d_i` a las dos masas vecinas. Las raíces de
+los autovalores no nulos de `M^−1/2 K M^−1/2`, divididas por `2π`, dan `N−1`
+frecuencias diagnósticas para `N` hojas. Se excluye el modo de traslación de
+frecuencia cero.
 Estos diagnósticos ignoran flexión y pérdidas del relleno; no son necesariamente
 los mínimos exactos de la curva de transmisión integrada.
 
@@ -210,11 +274,11 @@ TLdifusa = −10 log10(τdifusa)
 Para `x = 1`, TL normal es `3.0102999566 dB`. Duplicar masa o frecuencia produce
 un incremento tendente a `6.0206 dB` cuando domina la masa. Para `θmax = 90°`,
 la transmisión difusa se reduce a `ln(1+x²)/x²`. Estas soluciones cerradas sirven
-para verificar el límite sin rigidez de v2, igualando antes su definición de banda.
+para verificar el límite sin rigidez de V2/V3, igualando antes la definición de banda.
 
 La frecuencia crítica y la resonancia de v1 eran diagnósticos separados. Abrir
-un proyecto v1 en el editor v2 conserva la entrada y registra la migración, pero
-calcularlo con v2 cambia las ecuaciones y el promedio espectral; no conserva el
+un proyecto v1 en el editor actual conserva la entrada y registra la migración, pero
+calcularlo con el motor actual cambia las ecuaciones y el promedio espectral; no conserva el
 resultado por diseño.
 
 ## Rw provisional
@@ -240,11 +304,15 @@ normal. C/Ctr, STC y las clasificaciones de impacto todavía no están implement
 
 ## Límites del resultado
 
-Se rechaza calcular composiciones que soliciten bastidores acoplados, perfiles,
-revestimientos de suelo, placas compuestas no admitidas o un panel poroso
-independiente. Los datos pueden conservarse para su edición sin fingir que el
-motor ya los resuelve. Una etiqueta suelo/cubierta no cambia la excitación aérea
-a impacto o lluvia.
+Se rechaza calcular composiciones que soliciten bastidores acoplados o montantes,
+perfiles, Floor Cover, placas compuestas/anisótropas no admitidas, relleno Miki con
+gas noble o métodos Gomperts/Mechel. Activar excitación de impacto o lluvia también
+bloquea la predicción; sus controles se guardan sin inventar curvas ni índices.
+El modo aéreo explícito de suelo/cubierta sigue siendo transmisión aérea ideal.
+
+Floor Covering puede mostrar ΔL declarado de un registro y su tipo de suelo base;
+ese espectro no equivale a Ln de la construcción completa ni es una predicción
+propia de impacto. Su etiqueta Measured no acredita un informe de ensayo.
 
 TL representa la relación de potencia del modelo. Un índice de laboratorio
 requiere método y montaje de ensayo. La transmisión directa ideal no determina

@@ -1,88 +1,106 @@
 # Noiz Transmission
 
 Aplicación open source de escritorio para estudiar el aislamiento acústico de
-**elementos constructivos**. Motor físico independiente, biblioteca con procedencia,
-editor de composición y resultados reproducibles. Orientada a Windows, desarrollada
-también en Linux con Python, PySide6, NumPy, SciPy y PyQtGraph.
+**elementos constructivos**, con motor físico independiente, materiales con
+procedencia y resultados reproducibles. Python, PySide6, NumPy, SciPy y PyQtGraph.
 
-**Versión 0.2.0 · prototipo científico.** La V2 incorpora hojas múltiples, rigidez,
-amortiguamiento y cámaras. La exactitud respecto a sistemas comerciales todavía
+**Versión 0.3.0 · prototipo científico.** La V3 reorganiza el trabajo mediante
+controles anidados, incorpora cuatro hojas y tres cámaras y permite guardar las
+variantes de un proyecto. La exactitud respecto a sistemas comerciales todavía
 requiere validación experimental; los resultados no equivalen a un ensayo.
 
-![Editor V2 con un proyecto sintético calculado](docs/images/workbench-v2.png)
+![Editor V3 con un proyecto sintético calculado](docs/images/workbench-v3.png)
 
-## Abrir la aplicación
+## Descargar y abrir
 
-Instala [uv](https://docs.astral.sh/uv/getting-started/installation/), extrae el
-proyecto y, en Windows, ejecuta **`INICIAR_NOIZ.cmd`**. También puedes usar una
-terminal dentro de la carpeta:
+El código V3 está en la rama
+[`codex/noiz-transmission-v3`](https://github.com/oscargit010502/Noiz-Transmission/tree/codex/noiz-transmission-v3).
+Selecciona esa rama y usa **Code → Download ZIP**, o descarga el paquete de esta
+conversación. Extrae el ZIP, instala [uv](https://docs.astral.sh/uv/getting-started/installation/)
+y ejecuta **`INICIAR_NOIZ.cmd`** en Windows. Desde la carpeta del proyecto:
 
 ```shell
 uv sync --locked --extra desktop
 uv run --locked --extra desktop noiz-transmission
 ```
 
-La primera ejecución descarga Python 3.13 y dependencias si faltan. Consulta la
-[guía de Windows](PROBAR_EN_WINDOWS.md) para probar cálculos, importar tus materiales
-y encontrar las carpetas. Todavía no se distribuye un instalador `.exe`.
+La primera ejecución descarga Python 3.13 y dependencias si faltan. La
+[guía de Windows](PROBAR_EN_WINDOWS.md) explica cómo probar cada control y dónde
+están las carpetas. Esta entrega contiene código y lanzador; no un instalador `.exe`.
 
-## Qué cambia en V2
+## Controles de V3
 
-- Editor de una, dos o tres hojas, hasta seis capas por hoja: material, espesor,
-  densidad, módulo de Young, Poisson, amortiguamiento y número de placas.
-- Cámaras con profundidad, absorbente y resistividad al flujo explícita; esquema
-  en sección y axonometría. Los parámetros ocupan el área principal y los
-  resultados se pueden redimensionar u ocultar.
-- Biblioteca XML con búsqueda y filtros por familia, categoría, fabricante y
-  país; propiedades originales, unidades y procedencia visibles. Creación de
-  materiales propios y copias editables.
-- Cálculo en segundo plano, curva y tabla por tercios de octava de 50–5000 Hz,
-  hasta seis comparaciones, guardado de proyectos y exportación CSV/HTML.
-- Proyectos V2 con copias completas de las propiedades utilizadas; apertura de
-  proyectos V1 con aviso del cambio de modelo físico.
+- **Wall y Ceiling:** Single / Double / Triple / Quad; Panel y Frame intercalados,
+  Facing en Single y Leak. Quad tiene cuatro paneles y tres Frames interiores.
+- **Panel:** seis pestañas Layer, activación individual, Thickness en mm y
+  Quantity de 1 a 10. Elegir un producto carga su espesor nominal, que se puede
+  modificar. Búsqueda por nombre y filtros de categoría y fabricante.
+- **Frame:** cámara, montante, dimensiones, separación e Infill. Quantity = 0
+  retira el absorbente del cálculo y de la vista, conservando su selección.
+- **Floor:** hasta Triple, Floor cover antes de Panel 1 y pestaña Floor Covering
+  para consultar curvas ΔL importadas, filtradas por base ligera, pesada o CLT.
+- **Roof:** Single/Double y controles Rainfall. **Glazing:** hasta Quad, sin Leak,
+  con selección de gas de cámara. **Porous:** espesor y resistividad de la capa.
+- Vista 3D con arrastre para rotar, rueda para zoom y opacidad; corte 2D con
+  materiales diferenciados. Tabla superior en octavas, descripción, masa y fc/f₀.
+- Chart y Tables en tercios de octava, hasta seis comparaciones, gráfica
+  redimensionable y ocultable, exportación CSV/HTML y cálculo cancelable.
+- Guardado V3 con propiedades completas y variantes de los distintos modos y
+  topologías; apertura de proyectos V1/V2. Las comparaciones se exportan aparte.
 
-El motor utiliza matrices de transferencia para placas isotrópicas infinitas y
-cámaras independientes. Incluye flexión, pérdidas, relleno poroso Miki y una
-abertura ideal expresada en porcentaje de área. Las capas de una hoja comparten
-movimiento, con suma de rigideces individuales; esto no representa una placa
-compuesta adherida. Los detalles están en [teoría y supuestos](docs/theory.md).
+## Qué calcula y qué queda pendiente
 
-Los nombres Muro, Cielorraso, Suelo, Cubierta, Vidrio y Puerta identifican el
-elemento: todos calculan **transmisión aérea**. Los puentes por montantes, perfiles
-estructurales, laminados, núcleos acoplados, impacto, lluvia, STC/IIC y flancos
-necesitan modelos específicos. Las configuraciones no soportadas se conservan
-para edición y se bloquean al calcular. Rw es orientativo y provisional; la
-incidencia normal no genera Rw. No se calcula aislamiento entre recintos ISO 12354.
+| Función | Estado en V3 |
+| --- | --- |
+| Transmisión aérea de 1–4 hojas isotrópicas independientes | Matrices de transferencia, flexión y amortiguamiento |
+| Cámaras de aire y absorbente poroso | Modelo Miki, con resistividad explícita |
+| Cámaras de argón y criptón | Propagación acústica con propiedades de gas ideal; sin Miki en esos gases |
+| Facing poroso exterior y elemento Porous | Modelo Miki; no representan un revestimiento sólido adherido |
+| Leak de área abierta ideal | Combina transmisiones por área; no usa profundidad ni posición |
+| Gomperts / Mechel, uniones por montantes | Controles y datos conservados; cálculo bloqueado por modelo pendiente |
+| Impacto Ln,w/IIC y ruido de lluvia | Controles disponibles; predicción pendiente |
+| Floor Covering medido | Consulta de ΔL declarado en catálogo; no calcula el Ln del suelo completo |
+| Rw | Clasificación provisional de la curva difusa; sin clasificación en incidencia normal |
+
+No se calcula aislamiento entre recintos, flancos ni uniones de ISO 12354.
+Las hojas son infinitas y las capas de una hoja comparten movimiento, con suma
+de rigideces individuales: no es un modelo de laminado adherido. Una cámara con
+resonancias estrechas puede tardar; el solver exige convergencia antes de entregar
+la curva. Quad con relleno puede requerir varios minutos. Consulta
+[teoría y supuestos](docs/theory.md) y [validación](docs/validation.md).
+
+INSUL 10 es una referencia funcional y bibliográfica. Noiz Transmission es
+independiente de Marshall Day Acoustics y no atribuye a su modelo los márgenes de
+error publicados para INSUL. Las opciones pendientes no sustituyen silenciosamente
+sus modelos por otras fórmulas.
 
 ## Materiales y datos locales
 
-`Importar XML…` incorpora Material, Profile, Glazing, Floor Cover, Absorption y
-Core; conserva los campos originales y señala propiedades incompletas. Importar
-un registro no demuestra que sea físicamente válido ni compatible con el motor.
-El campo `Damping` de absorbentes no se convierte automáticamente en resistividad.
+**Importar XML…** admite Material, Profile, Glazing, Floor Cover, Absorption,
+Core y Stud; conserva campos originales, unidades, identificadores y SHA-256.
+Los siete XML INSUL 10.0/8 aportados contienen **3.242 registros**. Importar un
+registro no demuestra su validez experimental ni su compatibilidad con el motor.
+El `Damping` de absorbentes no se convierte automáticamente en resistividad.
 
-El código público incluye ejemplos sintéticos. Los catálogos importados quedan
-en el almacenamiento del usuario o en `local_data/catalog.json` si existe junto
-al proyecto; `NOIZ_CATALOG_PATH` permite elegir otra ruta. `local_data/` está
-excluido de Git y de las distribuciones públicas. Los datos de terceros conservan
-sus propios derechos y no adquieren la licencia MIT del código.
-
-INSUL 10 y las capturas aportadas son referencias funcionales. Noiz Transmission
-es independiente de Marshall Day Acoustics y no reproduce su código ni atribuye
-a su propio modelo la precisión publicada para INSUL.
+La distribución pública incluye ejemplos sintéticos. El paquete personal guarda
+el catálogo convertido en `local_data/catalog-v3.json`, excluido de Git y del
+paquete Python. También se reconoce `local_data/catalog.json` de V2; V3 tiene
+preferencia si ambos existen. `NOIZ_CATALOG_PATH` permite elegir otra ruta. Sin
+catálogo local se usa el almacenamiento del usuario y se ofrecen ejemplos
+sintéticos para empezar. Los datos de terceros conservan sus propios derechos.
 
 ## Reproducir sin interfaz
 
 ```shell
 uv sync --locked
-uv run noiz assembly examples/double_leaf.noiz.json --output-dir artifacts/v2
-uv run noiz catalog import ruta/Materials_INSUL.xml ruta/Absorption_INSUL.xml
+uv run noiz assembly examples/v3_single.noiz.json --output-dir artifacts/v3
+uv run noiz assembly examples/v3_quad.noiz.json --output-dir artifacts/quad
+uv run noiz catalog import ruta/Material_INSUL10.xml ruta/Stud_INSUL10.xml
 ```
 
-El cálculo genera `result.json`, `spectra.csv` y `report.html`. Una cámara con
-resonancias estrechas puede requerir más tiempo de integración; el solver exige
-convergencia antes de entregar la curva. El flujo original permanece disponible
-mediante `noiz predict examples/single_panel.noiz.json --output-dir artifacts/v1`.
+Cada cálculo genera `result.json`, `spectra.csv` y `report.html`. El ejemplo Quad
+usa incidencia normal y no emite Rw; los proyectos guardan las condiciones de
+cálculo. Los ejemplos V1/V2 permanecen disponibles para reproducibilidad.
 
 ## Cinco componentes
 
@@ -103,13 +121,12 @@ uv run python -m build --installer uv
 
 En Linux sin pantalla usa `QT_QPA_PLATFORM=offscreen uv run pytest -W error`.
 La CI configura Windows y Linux; su definición no sustituye una ejecución nativa
-verificada. Los extras incluyen escritorio, herramientas de desarrollo y
-Phonometry para contrastes independientes.
+verificada. Phonometry se instala como extra para contrastes independientes.
 
 - [Arquitectura](docs/architecture.md) y [hoja de ruta](docs/roadmap.md)
-- [Validación](docs/validation.md), [fuentes](docs/sources.md) y [revisión INSUL/XML](docs/v2-reference-review.md)
+- [Entrega V3 y comprobaciones realizadas](docs/release-v3.md)
+- [Validación](docs/validation.md), [fuentes](docs/sources.md) y [revisión INSUL 10/XML](docs/v3-reference-review.md)
 - [Materiales](docs/materials.md), [reproducibilidad](docs/reproducibility.md) y [contribuciones](CONTRIBUTING.md)
 
-Código bajo [licencia MIT](LICENSE), conservando la atribución original. PySide6
-y otras dependencias mantienen sus licencias; cualquier futuro ejecutable debe
-incluir los avisos correspondientes.
+Código bajo [licencia MIT](LICENSE). PySide6 y las demás dependencias mantienen
+sus licencias; un futuro ejecutable debe incluir los avisos correspondientes.

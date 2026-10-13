@@ -1,6 +1,6 @@
 """Lossless field import and strict local persistence for user-supplied XML.
 
-In the inspected INSUL 9.0/22 XML format lengths are metres, density kg/m³,
+In the inspected INSUL 9.0/22 and 10.0/8 XML formats lengths are metres, density kg/m³,
 and Young's modulus Pa (the desktop displays mm and GPa). SideA is the
 physical panel only for Isotropic entries. Other material types may contain
 several active constituents; their raw fields are retained without inventing
@@ -33,17 +33,19 @@ _ROOTS = {
     "InsulFloorCover": ("floor_cover", "FloorCover"),
     "InsulAbsorption": ("absorption", "Absorption"),
     "InsulCore": ("core", "Material"),
-    # Generic import support only: no Studs file was supplied for schema verification.
     "InsulStuds": ("stud", "Stud"),
     "InsulStud": ("stud", "Stud"),
 }
 _MAX_BYTES = 32 * 1024 * 1024
+_INSPECTED_SCHEMAS = frozenset({("9.0", "22"), ("10.0", "8")})
+_INVALID_XML_CONTROLS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 _NUMERIC_FIELDS = frozenset({
     "Density", "YoungsModulus", "Damping", "Thickness", "PoissonsRatio", "Plateau",
     "OrthotropicRatio", "OrthotropicRatioZY", "AnisotropicRatio", "RibL", "RibH",
     "RibW", "RibV", "ElasticModulus", "UnderlayDensity", "UnderlayThickness",
     "UnderlayElasticModulus", "UnderlayDamping", "UnderlayOrthotropicRatio",
     "UnderlayPoissonsRatio", "Colour", "Texture", "UnderlayColour", "UnderlayTexture",
+    "StudDepth", "StudWidth", "StudSpacing", "MaterialThickness",
 })
 _ALIASES = {
     "Density": "density_kg_m3", "Thickness": "thickness_m",
@@ -109,6 +111,26 @@ class ImportResult:
     warnings: tuple[str, ...]
     source_file: str
     source_sha256: str
+
+
+@dataclass(frozen=True)
+class CatalogSpectrum:
+    """Imported dB curve with its claim, never a verified laboratory result.
+
+    ``impact_sound_reduction`` is the floor covering improvement ΔL, not the
+    impact level Ln of a complete floor. Values retain the source band labels;
+    no missing bands are interpolated and no weighting is applied here.
+    """
+
+    frequencies_hz: tuple[float, ...]
+    values_db: tuple[float, ...]
+    quantity: str
+    unit: str
+    source: str
+    lab_claimed: bool
+    verified: bool
+    cover_type: str
+    warnings: tuple[str, ...]
 
 
 class _SafeTreeBuilder(ET.TreeBuilder):
@@ -179,6 +201,7 @@ def _properties(raw: dict[str, str], kind: str, warnings: list[str]) -> dict[str
         "source_version": raw.get("$document/@Version", ""),
         "source_release": raw.get("$document/@Release", ""),
         "measurement_verified": False,
+        "source_guid": raw.get("GUID", "").strip(),
     }
     for path, text in raw.items():
         field = path.rsplit("/", 1)[-1]
@@ -218,7 +241,26 @@ def _properties(raw: dict[str, str], kind: str, warnings: list[str]) -> dict[str
             "Tipo compuesto, perfilado o anisótropo: no sustituir por una placa homogénea SideA."
         )
     if kind == "stud":
-        warnings.append("Esquema Stud no verificado; conservar campos para revisión manual.")
+        for original, target in (
+            ("StudDepth", "stud_depth_m"), ("StudWidth", "stud_width_m"),
+            ("StudSpacing", "stud_spacing_m"), ("MaterialThickness", "material_thickness_m"),
+        ):
+            if (path := f"Properties/{original}") in raw:
+                props[target] = props.get(path)
+                value = props[target]
+                if type(value) in (int, float) and value <= 0:
+                    warnings.append(f"{target}: dimensión no positiva; revisar antes de usar.")
+        props["frame_material"] = {
+            "MetalFrame": "metal", "TimberFrame": "timber",
+        }.get(raw.get("Category", "").strip(), "unknown")
+        props["structural_model_verified"] = False
+        warnings.append(
+            "Las dimensiones del montante no definen su transmisión estructural ni una unión."
+        )
+    if kind == "floor_cover":
+        props["cover_type"] = raw.get("CoverType", "").strip()
+        props["spectrum_quantity"] = "impact_sound_reduction"
+        props["spectrum_unit"] = "dB"
     positive = all(type(props.get(k)) in (float, int) and props[k] > 0
                    for k in ("density_kg_m3", "thickness_m", "young_modulus_pa"))
     poisson = props.get("poisson_ratio")
@@ -233,7 +275,8 @@ def _properties(raw: dict[str, str], kind: str, warnings: list[str]) -> dict[str
         )):
             warnings.append("Razón anisótropa distinta de 1; revisar antes del modelo isótropo.")
     props["units_schema_verified"] = (
-        props["source_version"] == "9.0" and props["source_release"] == "22"
+        (props["source_version"], props["source_release"]) in _INSPECTED_SCHEMAS
+        and (kind != "stud" or props["source_version"] == "10.0")
     )
     props["solid_model_eligible"] = bool(
         kind in ("material", "glazing") and props["material_type"] == "Isotropic"
@@ -247,12 +290,65 @@ def _properties(raw: dict[str, str], kind: str, warnings: list[str]) -> dict[str
     return props
 
 
-def import_xml(path: str | Path) -> ImportResult:
+def _parse_xml(data: bytes, repair_invalid_controls: bool) -> tuple[ET.Element, bool]:
+    """Audited recovery only for illegal control characters in record names.
+
+    The supplied V10 absorption file contains U+0001 in one product name.
+    Recovery preserves that original character in raw_fields, hashes the
+    untouched input, and substitutes a visible replacement only in the display
+    name. It cannot repair markup, numeric properties, entities or namespaces.
+    """
+    try:
+        return ET.fromstring(data, parser=ET.XMLParser(target=_SafeTreeBuilder())), False
+    except ET.ParseError:
+        if not repair_invalid_controls:
+            raise
+    try:
+        text = data.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ValueError("La reparación de controles solo admite XML UTF-8.") from exc
+    controls = _INVALID_XML_CONTROLS.findall(text)
+    if not controls:
+        raise ValueError("El XML es inválido y no contiene controles de nombre reparables.")
+    prefix = "__NOIZ_CONTROL_"
+    while prefix in text:
+        prefix += "_"
+    substitutions: dict[str, str] = {}
+
+    def substitute(match: re.Match) -> str:
+        token = f"{prefix}{len(substitutions)}__"
+        substitutions[token] = match[0]
+        return token
+
+    repaired = _INVALID_XML_CONTROLS.sub(substitute, text)
+    root = ET.fromstring(repaired, parser=ET.XMLParser(target=_SafeTreeBuilder()))
+    name_nodes = {id(child) for record in root for child in record
+                  if child.tag == f"{root.tag.removesuffix(_local(root.tag))}Name"
+                  and not len(child)}
+    restored = 0
+    for node in root.iter():
+        if any(prefix in item for item in (node.tag, node.tail or "", *node.attrib,
+                                          *node.attrib.values())):
+            raise ValueError("Solo se pueden reparar controles en el texto de Name.")
+        if prefix in (node.text or ""):
+            if id(node) not in name_nodes:
+                raise ValueError("Solo se pueden reparar controles en el texto de Name.")
+            for token, original in substitutions.items():
+                if token in node.text:
+                    node.text = node.text.replace(token, original)
+                    restored += 1
+    if restored != len(controls):
+        raise ValueError("No se pudieron conservar todos los controles originales.")
+    return root, True
+
+
+def import_xml(path: str | Path, *, repair_invalid_controls: bool = True) -> ImportResult:
     """Import each record, including blank-name/duplicate rows, retaining provenance.
 
-    Record IDs are file-content hash + ordinal, because the supplied format has
-    no explicit IDs. An XML extension, its namespace, or Lab=True does not make
-    any entry scientifically verified. Unsupported roots fail explicitly.
+    Record IDs remain file-content hash + ordinal; explicit ID/GUID is retained
+    separately. Neither its namespace nor Lab=True makes an entry verified.
+    Name-control recovery is audited and does not change the file. Set
+    repair_invalid_controls=False for strict XML 1.0 parsing instead.
     """
     path = Path(path)
     with path.open("rb") as stream:
@@ -260,7 +356,7 @@ def import_xml(path: str | Path) -> ImportResult:
     if len(data) > _MAX_BYTES:
         raise ValueError("El XML supera el límite de 32 MiB.")
     try:
-        root = ET.fromstring(data, parser=ET.XMLParser(target=_SafeTreeBuilder()))
+        root, repaired_controls = _parse_xml(data, repair_invalid_controls)
     except ET.ParseError as exc:
         raise ValueError(f"XML inválido: {exc}") from exc
     root_name = _local(root.tag)
@@ -282,11 +378,20 @@ def import_xml(path: str | Path) -> ImportResult:
         raw["$document/root"] = root_name
         raw["$document/namespace"] = namespace.strip("{}")
         warnings: list[str] = []
-        original_id = raw.get("@ID", raw.get("ID", f"{record_tag}[{index}]"))
-        label = raw.get("Name", "").strip()
+        original_id = (raw.get("@ID") or raw.get("ID") or raw.get("GUID")
+                       or f"{record_tag}[{index}]")
+        original_label = raw.get("Name", "").strip()
+        label = original_label
+        if _INVALID_XML_CONTROLS.search(raw.get("Name", "")):
+            warnings.append(
+                "Name contenía un control XML ilegal: se muestra como �; "
+                "el texto original se conserva en raw_fields y el archivo no se modifica."
+            )
+            raw["$import/repaired_fields"] = "Name"
+            label = _INVALID_XML_CONTROLS.sub("�", label)
         if not label:
             warnings.append("Nombre vacío en el origen; registro conservado con su ordinal.")
-        if names[label] > 1:
+        if names[original_label] > 1:
             warnings.append("Nombre repetido en el archivo; se conserva como registro independiente.")
         name = label or f"Sin nombre · {record_tag} {index}"
         countries = []
@@ -307,12 +412,73 @@ def import_xml(path: str | Path) -> ImportResult:
     summary = [
         "Datos del usuario; importación no equivale a validación científica ni licencia de redistribución."
     ]
-    if root.attrib.get("Version") != "9.0" or root.attrib.get("Release") != "22":
-        summary.append("Versión XML distinta del esquema inspeccionado 9.0/22; revisar unidades.")
+    if repaired_controls:
+        summary.append("Se repararon controles ilegales únicamente para mostrar nombres; "
+                       "SHA-256 y campos originales conservados.")
+    if (root.attrib.get("Version"), root.attrib.get("Release")) not in _INSPECTED_SCHEMAS:
+        summary.append("Versión XML distinta de los esquemas inspeccionados 9.0/22 y 10.0/8; "
+                       "revisar unidades.")
     if not entries:
         summary.append("Archivo válido sin registros.")
     summary.append(f"{sum(bool(entry.warnings) for entry in entries)} registros con observaciones.")
     return ImportResult(tuple(entries), tuple(summary), source_file, sha256)
+
+
+def catalog_spectrum(entry: CatalogEntry) -> CatalogSpectrum | None:
+    """Read the imported curve without promoting source flags to evidence.
+
+    Floor-cover curves describe ΔL on the stated base floor. Material/glazing
+    ``Measurement`` curves are R/TL; other record families have no interpreted
+    dB spectrum. Malformed or duplicate frequency values are omitted with an
+    observation, retaining the original fields in the entry.
+    """
+    if entry.kind == "floor_cover":
+        section, quantity = "IsolationGain", "impact_sound_reduction"
+    elif entry.kind in ("material", "glazing"):
+        section, quantity = "Measurement", "sound_reduction_index"
+    else:
+        return None
+    raw = entry.raw_fields
+    prefix = f"{section}/Data/"
+    if not any(path.startswith(prefix) for path in raw):
+        return None
+    observations = [
+        "Curva importada sin informe de ensayo verificado; no usar como validación experimental."
+    ]
+    points: dict[float, float] = {}
+    seen_frequencies: set[float] = set()
+    for path, value in raw.items():
+        if not path.startswith(prefix):
+            continue
+        match = re.fullmatch(r"Hz(\d+(?:\.\d+)?)(?:\[\d+\])?", path.removeprefix(prefix))
+        if match is None:
+            observations.append(f"{path}: etiqueta de banda no reconocida; se omite.")
+            continue
+        frequency = float(match[1])
+        if frequency in seen_frequencies:
+            points.pop(frequency, None)
+            observations.append(f"{frequency:g} Hz: banda repetida; se omite por ambigüedad.")
+            continue
+        seen_frequencies.add(frequency)
+        level = _number(value, path, observations)
+        if frequency <= 0 or not math.isfinite(frequency) or level is None:
+            observations.append(f"{path}: punto inválido; se omite.")
+            continue
+        points[frequency] = level
+    source = raw.get(f"{section}/Source", "").strip()
+    if source.casefold() in ("", "xxx", "measured"):
+        observations.append("La etiqueta de origen no identifica un informe de laboratorio.")
+    if points and len(set(points.values())) == 1:
+        observations.append("Curva constante; comprobar si contiene valores de relleno.")
+    if not entry.properties.get("units_schema_verified", False):
+        observations.append("Versión XML sin unidades verificadas; revisar la interpretación dB.")
+    frequencies = tuple(sorted(points))
+    return CatalogSpectrum(
+        frequencies_hz=frequencies, values_db=tuple(points[f] for f in frequencies),
+        quantity=quantity, unit="dB", source=source,
+        lab_claimed=raw.get(f"{section}/Lab", "").strip().casefold() in ("true", "1", "-1"),
+        verified=False, cover_type=raw.get("CoverType", "").strip(), warnings=tuple(observations),
+    )
 
 
 def entry_to_dict(entry: CatalogEntry) -> dict:
@@ -440,9 +606,10 @@ def default_catalog_path() -> Path:
     """User library location, overridable for portable installations and tests."""
     if configured := os.environ.get("NOIZ_CATALOG_PATH"):
         return Path(configured).expanduser()
-    portable = Path.cwd() / "local_data" / "catalog.json"
-    if portable.is_file():
-        return portable
+    for filename in ("catalog-v3.json", "catalog.json"):
+        portable = Path.cwd() / "local_data" / filename
+        if portable.is_file():
+            return portable
     # A source checkout can be launched from elsewhere. Never search above an
     # installed site-packages location: that might capture another environment's data.
     module = Path(__file__).resolve()
@@ -450,9 +617,10 @@ def default_catalog_path() -> Path:
         source = module.parents[2]
         checkout = source.parent
         if source.name == "src" and (checkout / "pyproject.toml").is_file():
-            portable = checkout / "local_data" / "catalog.json"
-            if portable.is_file():
-                return portable
+            for filename in ("catalog-v3.json", "catalog.json"):
+                portable = checkout / "local_data" / filename
+                if portable.is_file():
+                    return portable
     if os.name == "nt":
         root = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local")))
         return root / "NoizTransmission" / "catalog.json"

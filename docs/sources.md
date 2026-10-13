@@ -18,7 +18,11 @@ de estudios experimentales que cuantifiquen el error del motor Noiz.
 | [Charts & Tables](https://docs.insul.co.nz/v10/UsingINSUL/ChartsTables/), [Calculation Settings](https://docs.insul.co.nz/v10/UsingINSUL/Settings-Calculation/) y [Ratings](https://docs.insul.co.nz/v10/SoundInsulationTheory/Ratings-Airborne/) | Funciones de resultados, parámetros y descripción divulgativa de clasificación |
 | [References](https://docs.insul.co.nz/v10/Resources/References/) | Identificadores bibliográficos y normas; leer una lista no equivale a leer sus artículos |
 | *INSUL 10 Brochure.pdf* y capturas aportados por el usuario | Distribución funcional y capacidades anunciadas; no contienen las ecuaciones completas del motor |
-| Seis XML aportados por el usuario | Estructura 9.0/22, campos, unidades inspeccionadas, duplicados y procedencia; no son ensayos verificados |
+| XML aportados por el usuario en V2 y V3 | Seis archivos 9.0/22 (2434 registros) y siete archivos 10.0/8 (3242); unidades, campos y procedencia inspeccionados; no son ensayos verificados |
+| [Getting Started — Leaks](https://docs.insul.co.nz/v10/GettingStarted/Leaks/) y [Theory — Leaks](https://docs.insul.co.nz/v10/SoundInsulationTheory/Airborne-Leaks/) | Controles Slit/Aperture y propiedades de Gomperts/Mechel; referencias identificadas, ecuaciones completas no publicadas |
+| [Floors](https://docs.insul.co.nz/v10/GettingStarted/Floors/) y [Impact — Floor Covers](https://docs.insul.co.nz/v10/SoundInsulationTheory/Impact-FloorCovers/) | Measured/Predicted, bases de suelo, significado de ΔL y relación de rigidez dinámica E=s′t |
+| [Roofs](https://docs.insul.co.nz/v10/GettingStarted/Roofs/) y [Rain Noise](https://docs.insul.co.nz/v10/SoundInsulationTheory/Rain-Noise/) | Single/Double, lluvia natural/laboratorio, área y tipo de salida; no contienen el modelo completo reproducible |
+| [Porous Material](https://docs.insul.co.nz/v10/GettingStarted/PorousMaterial/) | Facing de Single y lámina porosa independiente; controles de espesor y resistividad |
 | [Phonometry 3.3.0](https://pypi.org/project/phonometry/3.3.0/) y [metadatos](https://pypi.org/pypi/phonometry/3.3.0/json) | Rueda, licencia, `building/insulation.py` y `materials/porous_absorber.py`; contraste de Rw y Miki |
 | [Acoustipy, DBM Model](https://github.com/jakep72/acoustipy/blob/main/docs/Theory/DBM_Model.md) | Correlación Miki, unidades e intervalo del ajuste; coeficiente real 0.0699 frente a 0.070 de Phonometry |
 | [Python Acoustics, reflection.py](https://github.com/python-acoustics/python-acoustics/blob/master/acoustics/reflection.py) | Consulta secundaria de impedancia Delany–Bazley; no es el modelo Miki finalmente seleccionado |
@@ -26,7 +30,9 @@ de estudios experimentales que cuantifiquen el error del motor Noiz.
 | [LICENSE](../LICENSE) | MIT del proyecto, copyright original preservado |
 
 La consulta de guía, folleto y fuentes secundarias se desarrolla en
-[v2-reference-review.md](v2-reference-review.md). No se redistribuyen los archivos
+[V2](v2-reference-review.md) y [V3](v3-reference-review.md). V3 incluye inspección
+de las imágenes públicas de propiedades de fugas para confirmar unidades y estados
+de controles. No se redistribuyen los archivos
 originales comerciales como parte del repositorio público.
 
 La rueda de Phonometry 3.3.0 inspeccionada tiene SHA-256:
@@ -59,6 +65,22 @@ Se identificaron en la lista de referencias INSUL, entre otras:
   glazing*, JASA 74(2), 534–542,
   [doi:10.1121/1.389819](https://doi.org/10.1121/1.389819).
 
+Las referencias específicas localizadas para V3 también están pendientes de
+lectura primaria completa:
+
+- Gomperts (1964), *The “sound insulation” of circular and slit-shaped apertures*,
+  Acustica 14(1), 1–16; Gomperts y Kihlman (1967), *The sound transmission loss of
+  circular and slit-shaped apertures in walls*, Acustica 18(3), 144–150.
+- Mechel (1986), *The acoustic sealing of holes and slits in walls*, Journal of
+  Sound and Vibration 111(2), 297–336.
+- Vér (1971), *Impact Noise Isolation of Composite Floors*, JASA 50(4A), 1043–1050.
+- Petersson (1995), *The liquid drop impact as a source of sound and vibration*,
+  Building Acoustics 2(4), 585–621.
+- Marshall y Palmer (1948), *The Distribution Of Raindrops With Size*, Journal of
+  Meteorology 5(4), 165–166.
+- Griffin y Ballagh (2012), *A consolidated theory for predicting rain noise*,
+  Building Acoustics 19(4), 221–248.
+
 Phonometry identifica además Miki, Y. (1990), *Acoustical properties of porous
 materials — Modifications of Delany-Bazley models*, Journal of the Acoustical
 Society of Japan (E) 11(1), 19–24, ecuaciones 30–34. El artículo primario no se
@@ -87,11 +109,11 @@ No se copian textos normativos al repositorio.
 
 ## Historial de acceso
 
-Durante v1, el proxy bloqueó las dos direcciones INSUL aportadas. En esta sesión
-v2, con el dominio configurado, se abrieron correctamente por HTTPS; el bloqueo
+Durante V1, el proxy bloqueó las dos direcciones INSUL aportadas. En las sesiones
+V2/V3, con el dominio configurado, se abrieron correctamente por HTTPS; el bloqueo
 anterior queda como antecedente y ya no impide la revisión funcional.
 
 El catálogo web ISO y la guía oficial de licencias Qt no pudieron consultarse en
-la sesión inicial. Esta revisión v2 no acredita una lectura nueva de esos textos.
+la sesión inicial. Las revisiones V2/V3 no acreditan una lectura nueva de esos textos.
 La revisión de licencias de las bibliotecas que se empaqueten sigue pendiente antes
 de publicar un instalador, independientemente del funcionamiento del código fuente.

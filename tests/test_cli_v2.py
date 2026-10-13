@@ -68,7 +68,7 @@ def test_assembly_cli_writes_complete_reproducible_reports(project_path, tmp_pat
     assert not result.stderr
     first = (output / "result.json").read_bytes()
     payload = json.loads(first)
-    assert payload["schema_version"] == 2
+    assert payload["schema_version"] == 3
     assert set(payload["software"]) == {"noiz_transmission", "python", "numpy", "scipy"}
     assert len(payload["predictions"]) == 2
     predicted = payload["predictions"][0]

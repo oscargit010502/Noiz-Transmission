@@ -1,35 +1,39 @@
 # Catálogo internacional y procedencia
 
 El catálogo objetivo es **internacional**. El proyecto público distribuye tres
-materiales sintéticos para reproducir ejemplos. La versión 2 permite importar
+materiales sintéticos para reproducir ejemplos. La versión 3 permite importar
 bibliotecas XML del usuario y consultarlas por familia, texto, categoría,
 fabricante y región, conservando su procedencia. Importar no significa validar
 científicamente las propiedades ni atribuirles la licencia del código.
 
-## Archivos analizados en esta entrega
+## Catálogos recibidos y compatibilidad
 
-Los seis XML aportados declaran `Version="9.0"` y `Release="22"`. No constituyen un
-catálogo documentado de INSUL 10 por el hecho de acompañarse de un folleto v10.
+Los siete XML de V3 declaran `Version="10.0"`, `Release="8"`:
 
-| Familia | Registros recibidos |
+| Familia | Registros V3 |
 | --- | ---: |
-| Materiales | 1077 |
-| Perfiles | 273 |
-| Vidrios | 86 |
-| Revestimientos de suelo | 588 |
-| Absorbentes | 380 |
-| Núcleos | 30 |
-| Total | 2434 |
+| Materiales | 1575 |
+| Perfiles | 281 |
+| Vidrios | 80 |
+| Revestimientos de suelo | 669 |
+| Absorbentes | 523 |
+| Núcleos | 45 |
+| Montantes | 69 |
+| **Total** | **3242** |
 
-La séptima familia del editor es montantes; no se recibió un XML de esa familia.
-Su importador genérico no se presenta como verificado frente a un archivo real.
-Se conservan duplicados por nombre y 187 filas con nombre vacío mediante etiquetas
-identificables; no se inventan productos para rellenarlas.
+**1180 registros** cumplen el filtro de entrada de placa isótropa: 1158 materiales
+más 22 vidrios. Elegibilidad significa que se interpretan propiedades y rangos;
+no acredita un ensayo ni que una placa infinita represente todo ese producto.
 
-De los archivos inspeccionados, **718 registros** cumplen el filtro de entrada de
-placa isótropa: 696 materiales y 22 vidrios. La elegibilidad solo indica que se
-pueden interpretar ciertas propiedades y comprobar sus rangos; no demuestra que
-sean medidas fiables ni que una placa infinita represente ese producto.
+El catálogo V2, de versión 9.0/22, contenía 2434 registros en seis familias,
+718 elegibles para placa y 187 filas sin nombre. Continúa siendo importable.
+Los registros nuevos no sustituyen automáticamente los anteriores: importar el
+mismo archivo es idempotente, pero un archivo modificado tiene otra procedencia.
+Para evitar mezclar revisiones basta elegir una biblioteca local diferente.
+
+Los montantes nuevos aportan ancho, profundidad, separación y espesor de material;
+no aportan rigidez dinámica ni algoritmo de conexión acústica. Las categorías
+MetalFrame/TimberFrame sirven para organizar y representar la selección.
 
 ## Propiedades, unidades y datos originales
 
@@ -39,7 +43,7 @@ Los identificadores derivados del contenido y la posición permiten repetir una
 importación sin duplicar las mismas filas y mantener filas distintas de igual
 nombre. La persistencia local emplea JSON estricto y escritura atómica.
 
-En la estructura 9.0/22 inspeccionada, espesor se expresa en metros, densidad en
+En las estructuras inspeccionadas 9.0/22 y 10.0/8, espesor se expresa en metros, densidad en
 kg/m³ y módulo de Young en Pa. El editor muestra mm y GPa cuando corresponde;
 las conversiones no cambian los valores originales conservados. Los campos de
 otras versiones necesitan revisión antes de atribuirles las mismas unidades.
@@ -58,10 +62,22 @@ Miki se exige resistividad explícita en Pa·s/m² y espesor. La unidad de resis
 sí está confirmada en la guía: Rayl/m equivale a Pa·s/m². No se confunde con el
 factor de pérdidas estructural adimensional de una placa.
 
-Los registros de materiales, vidrios, núcleos y absorbentes contienen valores
-`Measurement/Source = XXX` y curvas de ejemplo constantes; no son un banco de
-validación experimental. El texto `Measured` en ciertos revestimientos no aporta
-por sí solo laboratorio, montaje, incertidumbre o informe de ensayo.
+Los XML V2 incluían valores `Measurement/Source = XXX` y curvas constantes de
+relleno. En los XML V3, Material y Glazing no incluyen espectros de ensayo. Los
+669 Floor Cover sí contienen curvas `IsolationGain` (ΔL) en 28 bandas entre 20 y
+10000 Hz: 616 para base pesada, 40 ligera y 13 CLT. `catalog_spectrum` conserva
+magnitud, bandas, tipo de base y observaciones. Ni `Measured` ni `Lab=True`
+identifican por sí solos laboratorio, montaje, incertidumbre o informe.
+
+La interfaz filtra los Floor Cover por base y separa su ΔL declarado del TL aéreo.
+Una medición para una base no se aplica automáticamente a otra; una curva ausente,
+incompatible o de modo Predicted no se transforma en un resultado inventado.
+
+Un nombre de Absorption 10.0/8 contiene un control `U+0001` ilegal en XML 1.0.
+El importador repara únicamente su presentación, conserva el hash de los bytes
+de origen y los campos originales y registra la observación. Los controles
+ilegales en campos físicos se rechazan, igual que DTD/entidades y documentos que
+exceden límites de tamaño o complejidad. No se modifica silenciosamente un número.
 
 ## Biblioteca local y publicación
 
@@ -107,4 +123,4 @@ soportes, rellenos y condiciones de borde. Un perfil aporta geometría, y un
 montante aporta dimensiones; ninguno define por sí solo la transmisión estructural.
 La curva y el índice de una pared ensayada pertenecen al espécimen y montaje,
 no a un material aislado. Véanse [validación](validation.md) y
-[referencias v2](v2-reference-review.md).
+[referencias V3](v3-reference-review.md).

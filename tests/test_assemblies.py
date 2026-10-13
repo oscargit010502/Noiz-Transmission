@@ -91,7 +91,7 @@ def test_assembly_topology_and_frozen_domain(single, layer):
     with pytest.raises(ValueError):
         Panel((layer,) * 7)
     with pytest.raises(ValueError):
-        replace(single, panels=single.panels * 4, cavities=(Cavity(),) * 3)
+        replace(single, panels=single.panels * 5, cavities=(Cavity(),) * 4)
     with pytest.raises(FrozenInstanceError):
         single.name = "Changed"
     triple = replace(single, panels=single.panels * 3, cavities=(Cavity(),) * 2)
@@ -243,7 +243,7 @@ def test_other_unsupported_modes_can_be_saved_but_not_predicted(single, catalog_
     profiled = replace(single.panels[0].layers[0], profile=profile)
     with pytest.raises(ValueError, match="perfiles"):
         predict_assembly(replace(single, panels=(Panel((profiled,)),)))
-    with pytest.raises(ValueError, match="poroso independiente"):
+    with pytest.raises(ValueError, match="resistividad"):
         predict_assembly(replace(single, element_type="porous"))
 
 
@@ -299,7 +299,7 @@ def test_roundtrip_full_snapshot_and_manual_overrides(single, catalog_entry, tmp
     save_assembly(loaded, path)
     assert path.read_bytes() == first
     payload = json.loads(first)
-    assert payload["schema_version"] == 2
+    assert payload["schema_version"] == 3
     assert payload["model_name"] == "transfer-matrix-plate-1"
     assert payload["project"]["panels"][0]["layers"][0]["catalog_entry"]["raw_fields"] == catalog_entry.raw_fields
     result = predict_assembly(replace(loaded, incidence="normal"))
@@ -309,7 +309,7 @@ def test_roundtrip_full_snapshot_and_manual_overrides(single, catalog_entry, tmp
 
 @pytest.mark.parametrize("mutation", [
     lambda d: d.update(schema_version=True),
-    lambda d: d.update(schema_version=3),
+    lambda d: d.update(schema_version=4),
     lambda d: d.update(model_name="future"),
     lambda d: d.update(extra=1),
     lambda d: d["project"].update(extra=1),
@@ -336,7 +336,7 @@ def test_duplicate_json_keys_and_nonfinite_literals_are_rejected(single, tmp_pat
     path = tmp_path / "tampered.json"
     save_assembly(single, path)
     original = path.read_text()
-    path.write_text(original.replace('"schema_version": 2', '"schema_version": 2, "schema_version": 2'))
+    path.write_text(original.replace('"schema_version": 3', '"schema_version": 3, "schema_version": 3'))
     with pytest.raises(ValueError, match="repetido"):
         load_assembly(path)
     path.write_text(original.replace('"width_m": 2.4', '"width_m": NaN'))

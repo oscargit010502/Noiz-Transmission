@@ -1,0 +1,163 @@
+{
+  "schema_version": 3,
+  "model_name": "transfer-matrix-plate-1",
+  "project": {
+    "name": "V3 Porous · lámina Miki independiente",
+    "panels": [
+      {
+        "layers": [
+          {
+            "name": "Panel ligero — ejemplo sintético",
+            "thickness_mm": 12.5,
+            "density_kg_m3": 800.0,
+            "young_modulus_pa": 2500000000.0,
+            "loss_factor": 0.03,
+            "poisson_ratio": 0.25,
+            "count": 1,
+            "catalog_entry": {
+              "id": "noiz-example:synthetic-light-panel",
+              "kind": "material",
+              "name": "Panel ligero — ejemplo sintético",
+              "category": "Referencia sintética",
+              "manufacturer": "Sin fabricante",
+              "countries": [
+                "Internacional"
+              ],
+              "properties": {
+                "density_kg_m3": 800.0,
+                "young_modulus_pa": 2500000000.0,
+                "poisson_ratio": 0.25,
+                "thickness_m": 0.0125,
+                "loss_factor": 0.03,
+                "material_type": "Isotropic",
+                "solid_model_eligible": true,
+                "anisotropic_ratio": 1.0,
+                "orthotropic_ratio": 1.0,
+                "units_schema_verified": true,
+                "measurement_verified": false,
+                "data_status": "synthetic",
+                "license": "MIT",
+                "source_version": "1",
+                "source_release": "public-synthetic"
+              },
+              "raw_fields": {
+                "id": "\"synthetic-light-panel\"",
+                "name": "\"Panel ligero — ejemplo sintético\"",
+                "density_kg_m3": "800.0",
+                "young_modulus_pa": "2500000000.0",
+                "poisson_ratio": "0.25",
+                "region": "\"Internacional / sin fabricante\"",
+                "source": "\"Valores definidos por el proyecto para verificación numérica; no son una ficha comercial.\"",
+                "data_status": "\"synthetic\"",
+                "source_url": "null",
+                "source_date": "\"2026-10-13\"",
+                "license": "\"MIT\"",
+                "version": "\"1\"",
+                "uncertainty": "\"No evaluada; no utilizar como caracterización de un producto comercial.\"",
+                "Example/defaults_file": "example_catalog.json",
+                "Example/defaults_sha256": "5afcab1dd0aa0624adb3f34b27fc43beba671ca301ab5c56d70bbd84556146e7",
+                "Example/thickness_m": "0.0125",
+                "Example/loss_factor": "0.03",
+                "Example/source": "Valores definidos por Noiz Transmission para probar la interfaz y el motor; no son materiales comerciales ni resultados de ensayo."
+              },
+              "source_file": "materials.json",
+              "source_sha256": "0999cd2e551e9d3773e3f8553c21119576d85958738bcbbf055b90c9b66d2778",
+              "original_id": "synthetic-light-panel",
+              "warnings": [
+                "Datos sintéticos públicos MIT: no caracterizan ningún producto comercial.",
+                "Espesor y amortiguamiento son hipótesis declaradas en example_catalog.json."
+              ]
+            },
+            "profile": null,
+            "enabled": true
+          }
+        ],
+        "name": "Panel 1"
+      }
+    ],
+    "cavities": [],
+    "element_type": "porous",
+    "width_m": 2.4,
+    "height_m": 2.7,
+    "incidence": "diffuse",
+    "air_density_kg_m3": 1.21,
+    "sound_speed_m_s": 343,
+    "limiting_angle_deg": 78,
+    "leak_percentage": 0,
+    "floor_cover": null,
+    "notes": "Ejemplo sintético MIT de Noiz Transmission. Ningún dato representa un producto comercial o un ensayo. Lámina porosa libre de 50 mm con marco rígido Miki. Resistividad explícitamente supuesta: 10000 Pa·s/m². Se calcula transmisión aérea, no absorción. Las capas sólidas guardadas no participan en este modo.",
+    "facing": {
+      "enabled": false,
+      "material": null,
+      "thickness_mm": 0,
+      "flow_resistivity_pa_s_m2": null,
+      "count": 1
+    },
+    "leak": {
+      "enabled": false,
+      "kind": "slit",
+      "method": "gomperts",
+      "position": "middle",
+      "height_mm": 1,
+      "length_mm": 1000,
+      "depth_mm": 100,
+      "radius_mm": 1,
+      "mechel_sealed": false,
+      "mass_side1_kg_m2": 0,
+      "mass_side2_kg_m2": 0,
+      "mechel_absorption": false,
+      "cavity_empty": true,
+      "cavity_absorption": null
+    },
+    "rainfall": {
+      "rain_type": "laboratory",
+      "laboratory_class": "heavy",
+      "natural_mm_h": 40,
+      "rainfall_area_m2": 1
+    },
+    "porous": {
+      "material": {
+        "id": "noiz-example:synthetic-porous-fill",
+        "kind": "absorption",
+        "name": "Absorbente de 50 mm — ejemplo sintético",
+        "category": "Referencia sintética",
+        "manufacturer": "Sin fabricante",
+        "countries": [
+          "Internacional"
+        ],
+        "properties": {
+          "thickness_m": 0.05,
+          "density_kg_m3": 20.0,
+          "solid_model_eligible": false,
+          "measurement_verified": false,
+          "units_schema_verified": true,
+          "data_status": "synthetic",
+          "license": "MIT"
+        },
+        "raw_fields": {
+          "Source": "Valores definidos por Noiz Transmission para probar la interfaz y el motor; no son materiales comerciales ni resultados de ensayo.",
+          "License": "MIT",
+          "id": "synthetic-porous-fill",
+          "name": "Absorbente de 50 mm — ejemplo sintético",
+          "thickness_m": "0.05",
+          "density_kg_m3": "20.0",
+          "note": "La resistividad al flujo debe indicarse explícitamente en cada proyecto; no se deduce de la densidad ni de un campo Damping."
+        },
+        "source_file": "example_catalog.json",
+        "source_sha256": "5afcab1dd0aa0624adb3f34b27fc43beba671ca301ab5c56d70bbd84556146e7",
+        "original_id": "synthetic-porous-fill",
+        "warnings": [
+          "Valores definidos por Noiz Transmission para probar la interfaz y el motor; no son materiales comerciales ni resultados de ensayo.",
+          "La resistividad al flujo debe indicarse explícitamente en cada proyecto; no se deduce de la densidad ni de un campo Damping."
+        ]
+      },
+      "thickness_mm": 50,
+      "flow_resistivity_pa_s_m2": 10000
+    },
+    "floor": {
+      "mode": "measured",
+      "base_floor": "lightweight"
+    },
+    "excitation": "airborne"
+  }
+}

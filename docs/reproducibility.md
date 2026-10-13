@@ -1,6 +1,6 @@
 # Reproducción del entorno y los resultados
 
-## Instalación y escritorio
+## Instalación y escritorio V3 (0.3.0)
 
 Se requiere Python 3.13 o 3.14 y `uv`. `pyproject.toml` define extras y `uv.lock`
 fija versiones y hashes. Desde PowerShell, en el checkout:
@@ -19,22 +19,60 @@ Los comandos de CLI funcionan también en Linux. `QT_QPA_PLATFORM=offscreen`
 permite pruebas técnicas sin pantalla, pero no ofrece una sesión interactiva ni
 sustituye probar la aplicación de forma nativa en Windows.
 
-## Ejemplo v2 sin datos comerciales
+## Ejemplo reproducible sin datos comerciales
 
 ```powershell
-uv run noiz assembly examples/double_leaf.noiz.json --output-dir artifacts/v2
+uv run noiz assembly examples/v3_single.noiz.json --output-dir artifacts/v3/single
+uv run noiz assembly examples/v3_quad.noiz.json --output-dir artifacts/v3/quad
+uv run noiz assembly examples/v3_glazing.noiz.json --output-dir artifacts/v3/glazing
+uv run noiz assembly examples/v3_porous.noiz.json --output-dir artifacts/v3/porous
 ```
 
-El ejemplo contiene placas sintéticas independientes y no requiere los XML
-importados. Produce resultados estructurados y exportaciones legibles en el
-directorio indicado. El modelo es `transfer-matrix-plate-1`, con flexión, pérdidas,
-cámaras y promedio energético en bandas exactas de 50 a 5000 Hz.
+Los ejemplos contienen propiedades sintéticas o supuestas y no requieren XML
+comerciales. Quad emplea incidencia normal y relleno con resistividad supuesta
+10000 Pa·s/m²; Glazing usa incidencia normal y cámara de argón de 16 mm.
+Sus curvas normales no reciben Rw. Cada comando produce resultados estructurados
+y exportaciones legibles en su directorio. El modelo es `transfer-matrix-plate-1`,
+con flexión, pérdidas, cámaras y promedio energético en bandas exactas de
+50 a 5000 Hz.
 
-El editor admite una a tres hojas, hasta seis capas por hoja y cámaras entre ellas.
+El editor admite hasta cuatro hojas (tres para Floor, dos para Roof), seis capas
+por hoja, cantidades de 1 a 10 y cámaras entre hojas consecutivas. Los ejemplos
+`v3_*.noiz.json` usan esquema 3. El histórico
+`examples/double_leaf.noiz.json` conserva esquema V2 y se migra al cargar; puede
+guardarse desde V3 para obtener el esquema nuevo. El nombre
+`transfer-matrix-plate-1` se mantiene entre V2/V3: registrar la versión/commit
+es necesario para fijar la implementación.
 Para usar Miki se introducen explícitamente espesor de absorbente y resistividad
 al flujo en Pa·s/m². Si parte de las bandas está fuera del ajuste, el resultado
 conserva la advertencia. Los campos de bastidor o perfil no habilitan una física
 inexistente; las configuraciones no admitidas se rechazan al calcular.
+
+`examples/v3_workspace.noiz.json` permite abrir variantes ya configuradas en el
+escritorio; el CLI calcula únicamente su composición activa. También se incluye
+`examples/v3_double.noiz.json` para dos hojas independientes.
+
+Para probar las ampliaciones desde la interfaz:
+
+1. En Wall, seleccionar Quad y configurar cuatro hojas y tres cámaras
+   independientes; una capa desactivada no participa en cálculo ni representación.
+2. En Single, activar Facing y especificar espesor, cantidad y resistividad.
+   Porous utiliza sus propios espesor y resistividad, sin la placa sólida.
+3. En Glazing Double, seleccionar hojas independientes sin montantes y un gas en
+   Frame 1. Argón, kriptón y xenón usan gas puro ideal a 20 °C y 101325 Pa.
+   No combinar gas noble con absorbente Miki.
+4. En Leak, para obtener un cálculo disponible elegir expresamente área abierta
+   ideal (`open_area`); Gomperts y Mechel se conservan como configuración pero
+   rechazan la predicción.
+5. Guardar tras cambiar entre configuraciones y reabrir: V3 conserva las variantes
+   por elemento/número de hojas, incluida la activa. El cálculo CLI del archivo
+   utiliza solo la variante activa, pero valida todo el documento.
+
+Floor y Roof inician las excitaciones de impacto y lluvia, cuyos modelos todavía
+no están implementados. Sus parámetros pueden revisarse y guardarse. Solo al
+seleccionar explícitamente transmisión aérea —sin Floor Cover— se utiliza el
+modelo aéreo del elemento. Floor Covering muestra ΔL declarado del catálogo,
+separado del resultado de la construcción; Predicted no genera curva.
 
 ## Importar una biblioteca XML local
 
@@ -42,7 +80,7 @@ En la interfaz se pueden seleccionar los XML desde la biblioteca. El flujo por
 comandos es:
 
 ```powershell
-uv run noiz catalog import "C:\mis-materiales\Materials_INSUL.xml" "C:\mis-materiales\Absorption_INSUL.xml"
+uv run noiz catalog import "C:\mis-materiales\Material_INSUL10.xml" "C:\mis-materiales\Absorption_INSUL10.xml"
 ```
 
 Se pueden indicar varios archivos; repetir el mismo contenido no duplica sus
@@ -52,7 +90,7 @@ biblioteca portátil desde PowerShell:
 
 ```powershell
 $env:NOIZ_CATALOG_PATH = Join-Path (Get-Location) "local_data\catalog.json"
-uv run noiz catalog import "C:\mis-materiales\Materials_INSUL.xml"
+uv run noiz catalog import "C:\mis-materiales\Material_INSUL10.xml"
 uv run noiz-transmission
 ```
 
@@ -60,7 +98,7 @@ uv run noiz-transmission
 incluyen en la distribución pública. Un archivo privado de trabajo puede contener
 la biblioteca del usuario; debe distinguirse del paquete público de fuentes.
 
-## Compatibilidad con v1
+## Compatibilidad con V1 y V2
 
 El comando anterior sigue disponible sin cambiar las ecuaciones históricas:
 
@@ -70,10 +108,15 @@ uv run noiz predict examples/single_panel.noiz.json --output-dir artifacts/v1
 ```
 
 Esta ruta usa `mass-law-1`, puntos centrales nominales y el proyecto JSON v1.
-Al abrir ese proyecto en el escritorio v2 se migra a una composición con notas
+Al abrir ese proyecto en el escritorio V3 se migra a una composición con notas
 sobre el cambio de modelo y los supuestos añadidos. El nuevo resultado puede
 cambiar por flexión y promedio en banda. Para reproducir el cálculo antiguo usar
-la ruta v1, no exigir igualdad al modelo v2.
+la ruta V1, no exigir igualdad al modelo de placas/cámaras.
+
+V3 también acepta los archivos de composición V2. Agrega explícitamente capas
+activas, cantidad de absorbente uno, gas aire y los controles nuevos desactivados;
+la excitación conserva transmisión aérea, incluso si la geometría era Floor o
+Roof. La carga no reescribe los originales.
 
 ## Pruebas y construcción
 
@@ -96,7 +139,7 @@ Conservar, como mínimo:
 - JSON de entrada, esquema, modelo, propiedades editadas y copias de registros
   de catálogo; procedencia y SHA-256 de los archivos importados utilizados.
 - Condiciones del aire, incidencia, límite angular y composición en orden.
-- Definición de bandas y espectro incidente; v2 supone potencia uniforme por Hz.
+- Definición de bandas y espectro incidente; V2/V3 suponen potencia uniforme por Hz.
 - Curvas, diagnósticos, Rw provisional y todas las advertencias.
 - Versión de herramientas de contraste y tolerancias numéricas.
 
@@ -108,14 +151,18 @@ uv pip freeze
 git rev-parse HEAD
 ```
 
-Los proyectos v2 usan `schema_version: 2`, `model_name` y un objeto `project`.
-Conservan propiedades actuales y registros de origen por separado, de modo que
-una edición no falsifica el dato original. El JSON v1 mantiene su propio esquema.
-Los informes son resultados calculados, no mediciones experimentales.
+Los archivos V3 usan `schema_version: 3`, `model_name`, un objeto `project` activo
+y una lista opcional `variants` a nivel superior. Cada variante contiene un
+proyecto completo y tiene una clave única de elemento/número de hojas. Conservan
+propiedades editadas y registros de origen por separado; actualizar el catálogo
+no modifica una composición guardada. No se admiten variantes anidadas ni claves
+ambiguas. Los archivos V1/V2 mantienen sus propios esquemas históricos y se
+migran al leer. Los informes son cálculos, no mediciones experimentales.
 
-La geometría ancho/alto se guarda, pero no influye en el modelo infinito. La masa
-mostrada suma placas, sin estructura ni absorbente. Conservar estas definiciones
-permite interpretar correctamente un informe o comparar dos ejecuciones.
+La geometría ancho/alto no produce modos finitos, pero sí determina el área
+relativa de una fuga geométrica. La masa calculada suma placas activas, sin
+estructura ni absorbente de cámara/Facing; Porous no infiere masa de resistividad.
+Conservar estas definiciones permite comparar correctamente ejecuciones.
 
 ## Entorno en la nube
 
@@ -127,7 +174,7 @@ base de datos: los proyectos y catálogos son locales.
 La descarga de dependencias necesita los índices y artefactos correspondientes.
 Mantener TLS, firmas y hashes verificados. Si una referencia no se puede abrir,
 registrar la limitación sin declararla consultada. La guía INSUL v10 sí pudo
-consultarse en la sesión v2, según [sources.md](sources.md).
+consultarse en las sesiones V2/V3; véase [la revisión V3](v3-reference-review.md).
 
 ## Distribución y licencias
 

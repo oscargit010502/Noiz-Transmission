@@ -64,17 +64,19 @@ def _assembly(args: argparse.Namespace) -> int:
     # Resolve all projects and calculate all curves before producing any output.
     predictions = tuple(predict_assembly(load_assembly(path)) for path in args.projects)
     payload = {
-        "schema_version": 2, "software": _software(),
+        "schema_version": 3, "software": _software(),
         "predictions": [asdict(result) for result in predictions],
     }
     result_json = json.dumps(payload, indent=2, ensure_ascii=False, allow_nan=False) + "\n"
     _publish_assembly(predictions, args.output_dir, result_json)
     for result in predictions:
         rating = f"Rw orientativo {result.rw_db} dB" if result.rw_db is not None else "sin Rw"
-        print(f"{result.project.name}: {result.total_mass_kg_m2:g} kg/m² · "
+        mass = ("masa no inferida" if result.project.element_type == "porous" else
+                f"{result.total_mass_kg_m2:g} kg/m²")
+        print(f"{result.project.name}: {mass} · "
               f"{result.total_thickness_mm:g} mm · {rating}")
     print(f"Resultados: {args.output_dir}")
-    print("Modelo exploratorio de placas y cámaras independientes. "
+    print("Modelo exploratorio de transmisión aérea. "
           "Consultar las hipótesis, procedencia y limitaciones del informe.")
     return 0
 
@@ -173,7 +175,7 @@ def main(argv: list[str] | None = None) -> int:
     calculation = commands.add_parser("predict", help="Calcular y comparar proyectos JSON")
     calculation.add_argument("projects", type=Path, nargs="+")
     calculation.add_argument("--output-dir", type=Path, required=True)
-    assembly = commands.add_parser("assembly", help="Calcular y comparar elementos multicapa V2")
+    assembly = commands.add_parser("assembly", help="Calcular y comparar elementos V3 (admite V1/V2)")
     assembly.add_argument("projects", type=Path, nargs="+")
     assembly.add_argument("--output-dir", type=Path, required=True)
     catalog = commands.add_parser("catalog", help="Importar y consultar la biblioteca local")

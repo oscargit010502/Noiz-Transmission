@@ -280,7 +280,7 @@ def test_narrowband_rejects_invalid_frequencies(frequency):
 
 
 def test_unsupported_assemblies_and_band_centres_are_explicit():
-    for plates, gaps in (([], []), ([Plate(10)], [Gap(.1)]), ([Plate(10)] * 4, [Gap(.1)] * 3),
+    for plates, gaps in (([], []), ([Plate(10)], [Gap(.1)]), ([Plate(10)] * 5, [Gap(.1)] * 4),
                          ([object()], []), ([Plate(10)] * 2, [object()])):
         with pytest.raises(ValueError):
             predict_multilayer(plates, gaps)
@@ -301,3 +301,144 @@ def test_narrowband_rejects_invalid_incidence_angle(angle):
 def test_unrepresentable_transfer_is_rejected_not_returned_as_zero_or_infinity():
     with pytest.raises(ValueError, match="representable"):
         narrowband_tau(1e200, [Plate(1e200, 1e200)])
+
+
+@pytest.mark.parametrize("mass,depth,nominal,reference", [
+    (10, .1, 5000, 53.1120891654), (1000, .1, 1600, 78.5664150033),
+    (100, .095, 5000, 73.3316219873),
+])
+def test_quad_three_close_modes_match_chebyshev_solution(mass, depth, nominal, reference):
+    # Independent N-sheet formula from the characteristic polynomial of the
+    # unit cell: tau=1/[1+(x U_(N-1)(y)/2)^2], y=cos(phi)-x*sin(phi)/2.
+    # Quad roots are y=0, +/-sqrt(1/2); no root search on production matrices.
+    centre = EXACT_BAND_CENTRES_HZ[np.flatnonzero(NOMINAL_BANDS_HZ == nominal)[0]]
+    lower, upper = centre * 10**(-1 / 20), centre * 10**(1 / 20)
+
+    def y(f):
+        x = 2 * math.pi * f * mass / (1.21 * 343)
+        phase = 2 * math.pi * f * depth / 343
+        return math.cos(phase) - x * math.sin(phase) / 2
+
+    def reflection(f):
+        x = 2 * math.pi * f * mass / (1.21 * 343)
+        return 2 * x * y(f) * (2 * y(f)**2 - 1)
+
+    roots = []
+    for mode in range(math.ceil(upper * 2 * depth / 343)):
+        for target in (-math.sqrt(.5), 0, math.sqrt(.5)):
+            root = brentq(lambda f: y(f) - target, mode * 343 / (2 * depth) + 1e-9,
+                           (mode + .5) * 343 / (2 * depth) - 1e-9, xtol=1e-12)
+            if lower < root < upper:
+                roots.append(root)
+    assert len(roots) == 3
+    points = []
+    for root in roots:
+        step = 1e-6
+        width = 1 / abs((reflection(root + step) - reflection(root - step)) / (2 * step))
+        points.extend(root + sign * 10.0**power * width
+                      for power in range(12) for sign in (-1, 0, 1)
+                      if lower < root + sign * 10.0**power * width < upper)
+    energy, _ = quad(lambda f: 1 / (1 + reflection(f)**2), lower, upper,
+                     points=sorted(set(points)), epsabs=1e-18, epsrel=1e-6, limit=800)
+    expected = -10 * math.log10(energy / (upper - lower))
+    assert expected == pytest.approx(reference, abs=.001)
+    actual = predict_multilayer([Plate(mass)] * 4, [Gap(depth)] * 3,
+                               frequencies_hz=[nominal], incidence="normal")
+    assert actual[0] == pytest.approx(expected, abs=.002)
+
+
+@pytest.mark.parametrize("gas,rho,c", [
+    ("argon", 1.660686174, 318.8885281), ("krypton", 3.483583159, 220.1758035),
+    ("xenon", 5.458007156, 175.8999154),
+])
+def test_ideal_gas_properties_and_normal_two_plate_solution(gas, rho, c):
+    from noiz_transmission.core.transfer import ideal_gas_properties
+
+    actual_rho, actual_c = ideal_gas_properties(gas)
+    assert actual_rho == pytest.approx(rho, rel=1e-9)
+    assert actual_c == pytest.approx(c, rel=1e-9)
+    frequencies = np.geomspace(20, 8000, 120)
+    omega = 2 * np.pi * frequencies
+    z0 = 1.21 * 343
+    x1, x2 = omega * 10 / z0, omega * 16 / z0
+    q, phase = actual_rho * actual_c / z0, omega * .017 / actual_c
+    real = 2 * np.cos(phase) - (x1 + x2) * np.sin(phase) / q
+    imaginary = ((x1 + x2) * np.cos(phase)
+                 + (q + (1 - x1 * x2) / q) * np.sin(phase))
+    expected = 4 / (real**2 + imaginary**2)
+    actual = narrowband_tau(frequencies, [Plate(10), Plate(16)],
+                           [Gap(.017, gas_density_kg_m3=actual_rho, gas_sound_speed_m_s=actual_c)])
+    np.testing.assert_allclose(actual, expected, rtol=1e-13)
+
+
+def test_gas_snell_critical_angle_has_finite_limit_and_evanescent_passivity():
+    # A fast hypothetical gas deliberately crosses the total-reflection angle.
+    # At kz=0 its finite layer matrix is [[1,j*rho*omega*d],[0,1]].
+    rho, speed, depth, frequency = .166, 1007.0, .04, 1250.0
+    critical = math.degrees(math.asin(343 / speed))
+    angle = np.asarray([critical - 1e-8, critical, critical + 1e-8])
+    actual = np.asarray([
+        narrowband_tau(frequency, [Plate(10), Plate(16)],
+                       [Gap(depth, gas_density_kg_m3=rho, gas_sound_speed_m_s=speed)],
+                       incidence_angle_deg=a) for a in angle
+    ])
+    zn = 1.21 * 343 / math.cos(math.radians(critical))
+    expected = 1 / (1 + (2 * math.pi * frequency * (26 + rho * depth) / (2 * zn))**2)
+    assert actual[1] == pytest.approx(expected, rel=1e-12)
+    np.testing.assert_allclose(actual, expected, rtol=1e-6)
+    oblique = narrowband_tau(np.geomspace(20, 5000, 100), [Plate(10, 350), Plate(16, 1500)],
+                            [Gap(depth, gas_density_kg_m3=rho, gas_sound_speed_m_s=speed)],
+                            incidence_angle_deg=78)
+    assert np.all((oblique > 0) & (oblique <= 1))
+
+
+def test_four_leaf_gas_stack_is_reciprocal_and_lossless_energy_conserving():
+    from noiz_transmission.core.transfer import ideal_gas_properties
+
+    plates = (Plate(10, 350), Plate(6, 180), Plate(20, 1000), Plate(14, 700))
+    gases = [ideal_gas_properties(gas) for gas in ("argon", "krypton", "xenon")]
+    gaps = tuple(Gap(depth, gas_density_kg_m3=rho, gas_sound_speed_m_s=c)
+                 for depth, (rho, c) in zip((.09, .04, .06), gases, strict=True))
+    frequencies = np.geomspace(20, 5000, 90)[:, None]
+    sine_squared = np.linspace(0, .95, 40)[None, :]
+    a, b, c, d = _coefficients(frequencies, sine_squared, plates, gaps, 1.21, 343)
+    transmitted = 4 / abs(a + b + c + d)**2
+    reflected = abs((a + b - c - d) / (a + b + c + d))**2
+    np.testing.assert_allclose(reflected + transmitted, 1, atol=1e-13)
+    reverse = _coefficients(frequencies, sine_squared, plates[::-1], gaps[::-1], 1.21, 343)
+    np.testing.assert_allclose(transmitted, 4 / abs(sum(reverse))**2, rtol=5e-12)
+
+
+def test_explicit_air_matches_default_gap_and_non_air_does_not_change_exterior():
+    plates, frequencies = [Plate(12), Plate(8)], [100, 500, 3000]
+    default = narrowband_tau(frequencies, plates, [Gap(.08)])
+    explicit = narrowband_tau(frequencies, plates, [Gap(.08, gas_density_kg_m3=1.21,
+                                                      gas_sound_speed_m_s=343)])
+    np.testing.assert_allclose(default, explicit, rtol=1e-14)
+    from noiz_transmission.core.transfer import ideal_gas_properties
+
+    rho, speed = ideal_gas_properties("argon")
+    different = narrowband_tau(frequencies, plates, [Gap(.08, gas_density_kg_m3=rho,
+                                                       gas_sound_speed_m_s=speed)])
+    assert not np.allclose(default, different)
+    vanishing = narrowband_tau(frequencies, plates, [Gap(1e-14, gas_density_kg_m3=rho,
+                                                        gas_sound_speed_m_s=speed)])
+    np.testing.assert_allclose(vanishing, narrowband_tau(frequencies, [Plate(20)]), rtol=1e-9)
+
+
+def test_gas_properties_reject_partial_nonphysical_and_unsupported_porous_fill():
+    from noiz_transmission.core.transfer import ideal_gas_properties
+
+    for create in (
+        lambda: Gap(.1, gas_density_kg_m3=1.6),
+        lambda: Gap(.1, gas_sound_speed_m_s=320),
+        lambda: Gap(.1, gas_density_kg_m3=-1, gas_sound_speed_m_s=320),
+        lambda: Gap(.1, gas_density_kg_m3=1.6, gas_sound_speed_m_s=True),
+        lambda: Gap(.1, 5000, .05, gas_density_kg_m3=1.6, gas_sound_speed_m_s=320),
+        lambda: ideal_gas_properties("unknown"),
+        lambda: ideal_gas_properties("air", temperature_c=-273.15),
+        lambda: ideal_gas_properties("air", temperature_c=True),
+        lambda: ideal_gas_properties("air", pressure_pa=0),
+    ):
+        with pytest.raises(ValueError):
+            create()

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "license": "MIT",
+  "data_status": "synthetic",
+  "source": "Valores definidos por Noiz Transmission para probar la interfaz y el motor; no son materiales comerciales ni resultados de ensayo.",
+  "plate_defaults": {
+    "synthetic-light-panel": {"thickness_m": 0.0125, "loss_factor": 0.03},
+    "synthetic-dense-panel": {"thickness_m": 0.1, "loss_factor": 0.02},
+    "synthetic-glazing-panel": {"thickness_m": 0.006, "loss_factor": 0.01}
+  },
+  "absorption": {
+    "id": "synthetic-porous-fill",
+    "name": "Absorbente de 50 mm — ejemplo sintético",
+    "thickness_m": 0.05,
+    "density_kg_m3": 20.0,
+    "note": "La resistividad al flujo debe indicarse explícitamente en cada proyecto; no se deduce de la densidad ni de un campo Damping."
+  }
+}

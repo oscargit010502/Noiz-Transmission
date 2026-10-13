@@ -1,10 +1,10 @@
-# Arquitectura de Noiz Transmission 0.2
+# Arquitectura de Noiz Transmission 0.3.0
 
 Noiz Transmission es un banco de trabajo de escritorio para Windows, con interfaz
-PySide6 y ejecución por comandos. La versión 2 permite componer elementos de una,
-dos o tres hojas, con hasta seis capas por hoja y cámaras intermedias. Calcula la
-transmisión aérea directa de un sistema ideal de placas infinitas; su precisión
-experimental para construcciones comerciales todavía no está determinada.
+PySide6 y ejecución por comandos. V3 permite componer hasta cuatro hojas, con seis
+capas por hoja y cámaras intermedias. Calcula transmisión aérea directa de placas
+infinitas y materiales porosos; su precisión experimental para construcciones
+comerciales todavía no está determinada.
 
 La pregunta científica sigue siendo: **¿podemos predecir razonablemente sistemas
 sencillos y reproducir los resultados?** La reproducción y una interfaz completa
@@ -12,11 +12,11 @@ son necesarias, pero no sustituyen la validación del modelo físico.
 
 ## Cinco componentes
 
-| Componente | Responsabilidad y estado v2 |
+| Componente | Responsabilidad y estado V3 |
 | --- | --- |
-| Motor independiente | Placas con masa, flexión y amortiguamiento; cámaras de aire y relleno Miki explícito; promedio energético angular y por banda; Rw provisional |
-| Biblioteca | Importación XML local, búsqueda por familia/fabricante/región, propiedades y procedencia conservadas; tres materiales sintéticos públicos |
-| Interfaz | Composición de hojas/capas/cámaras, biblioteca, sección constructiva, gráfica de espacio ajustable, tabla, comparación y proyectos |
+| Motor independiente | Hasta cuatro placas con masa, flexión y amortiguamiento; cámaras con gas; Miki en relleno, Facing y lámina porosa; integración energética; Rw provisional |
+| Biblioteca | XML 9.0/22 y 10.0/8 de siete familias; filtros y procedencia conservada; ejemplos sintéticos públicos |
+| Interfaz | Single/Double/Triple/Quad → Panel/Frame → Layer; productos integrados; corte 2D y 3D rotatorio; gráfica ajustable, tabla, comparación y variantes |
 | Banco de validación | Verificación matemática y contraste algorítmico independiente; ensayos experimentales pendientes |
 | Documentación | Ecuaciones, ámbitos admitidos, unidades, fuentes, protocolos y comandos reproducibles |
 
@@ -34,55 +34,75 @@ flowchart TD
 ```
 
 El motor no importa Qt ni conoce ventanas, archivos de proyecto o informes.
-`core/physics.py` conserva las expresiones de v1; `core/transfer.py` implementa
-placas y cámaras; `core/ratings.py` clasifica. `application/` valida composiciones,
-coordina cálculo, proyectos e informes. `catalog/` importa y conserva los datos
-locales. `data/materials.json` contiene los ejemplos sintéticos públicos. `ui/`
-presenta el banco de trabajo; `tests/` y `validation/` conservan las verificaciones.
+`core/physics.py` conserva las expresiones V1; `core/transfer.py` implementa
+placas, cámaras, gases y porosos; `core/ratings.py` clasifica. `application/`
+valida composiciones, coordina cálculo, proyectos e informes. `catalog/` importa
+los datos locales. `data/materials.json` contiene referencias sintéticas públicas.
+`ui/` presenta el editor; `tests/` y `validation/` conservan las verificaciones.
 
-## Contratos de datos
+## Contratos de datos y persistencia
 
-- Un panel contiene entre una y seis capas en contacto. Cada capa conserva nombre,
-  espesor, densidad, módulo de Young, Poisson, pérdidas, cantidad y, cuando existe,
-  una copia del registro de catálogo utilizado.
-- Una composición tiene entre uno y tres paneles y exactamente una cámara entre
-  cada par. Las cámaras conservan profundidad, relleno, resistividad explícita y
-  descripción del bastidor. Describir un bastidor no implementa su acoplamiento.
-- Los proyectos v2 usan JSON versionado con copias de las propiedades y su
-  procedencia; un catálogo actualizado no altera esas entradas guardadas.
-- Los proyectos v1 mantienen su ruta de cálculo histórica mediante `noiz predict`.
-  Al migrarlos al editor v2 cambia el modelo: se añade rigidez y promedio en banda.
-  La migración debe informar ese cambio; no promete la curva antigua.
+- Una hoja contiene de una a seis capas. Cada capa conserva espesor, densidad,
+  Young, Poisson, pérdidas, cantidad de 1 a 10, activación y una copia opcional
+  del registro de catálogo. Una capa inactiva conserva sus ajustes y no calcula.
+- Una composición tiene una a cuatro hojas y exactamente una cámara entre cada
+  par. Floor limita a tres, Roof a dos y Porous representa una lámina independiente.
+  Quad tiene cuatro paneles y tres cámaras.
+- La cámara conserva profundidad, gas, relleno, cantidad de 0 a 10, resistividad,
+  tipo de bastidor y dimensiones/registro de montante. Cantidad cero excluye
+  relleno del cálculo y de la vista; no elimina sus ajustes.
+- El JSON V3 usa `schema_version: 3`, `model_name`, `project` activo y una lista
+  opcional `variants`. Cada variante tiene una combinación única de elemento y
+  número de hojas, y conserva sus propios parámetros y copias de catálogo.
+- `save_workspace`/`load_workspace` conservan todas las variantes.
+  `save_assembly` guarda solo la composición suministrada. `load_assembly`, usado
+  por CLI, valida todo el archivo y devuelve la composición activa. No se ignoran
+  errores en variantes ocultas; claves desconocidas, duplicados ambiguos, valores
+  no finitos y documentos mayores de 32 MiB se rechazan.
+- Los archivos V2 se migran agregando valores explícitos para los campos V3.
+  Cargar no reescribe el archivo original. La ruta V1 `noiz predict` conserva sus
+  ecuaciones históricas; abrir V1 en el editor registra el cambio de modelo.
 - Los resultados conservan bandas, TL, índices provisionales, diagnósticos y
-  advertencias. Exportar CSV/HTML/JSON no transforma un resultado en certificado.
-- Las funciones físicas rechazan valores no finitos, dimensiones no positivas,
-  constantes inestables y configuraciones que requieren física no implementada.
+  advertencias. Exportar CSV/HTML/JSON no convierte un cálculo en certificado.
 
-Los valores v2 son promedios energéticos en bandas exactas de tercio de octava,
-identificadas mediante etiquetas nominales de 50 a 5000 Hz. La potencia incidente
-se supone uniforme por Hz dentro de cada banda. V1 continúa evaluando sus puntos
-centrales nominales: los dos procedimientos deben distinguirse al comparar.
+V2/V3 promedian transmisión energética en bandas exactas de tercio de octava,
+con etiquetas nominales 50–5000 Hz y potencia incidente uniforme por Hz. La tabla
+por octavas reúne tres tercios mediante sus anchos de banda. V1 evalúa centros
+nominales; los procedimientos deben distinguirse al comparar.
 
-## Ámbito admitido
+## Ámbito físico y controles de otros modelos
 
 Las capas de una hoja comparten desplazamiento transversal y permiten deslizamiento;
-se suman masa y rigidez individual, sin considerar una unión laminada rígida.
-Las cámaras no transmiten fuerzas mediante montantes. El relleno opcional usa un
-fluido equivalente de esqueleto inmóvil con resistividad introducida explícitamente.
-Ancho y alto documentan la geometría y su representación; el modelo infinito no
-calcula modos o pérdidas de borde a partir de esas dimensiones. Una fuga puede
-representarse únicamente como fracción de área abierta de transmisión unitaria,
-sin difracción ni resonancias de abertura.
+se suman masa y rigidez individual, sin unión laminada rígida. Las hojas se consideran
+mecánicamente independientes. El relleno Miki supone esqueleto inmóvil y necesita
+resistividad explícita; la cantidad controla el espesor efectivo. Facing aplica
+el mismo fluido equivalente a la cara incidente de Single. Porous calcula una
+lámina libre de material poroso sin placa ni respaldo.
 
-Los campos que describen perfiles, revestimientos o conexiones no habilitan
-algoritmos correspondientes. No se obtiene una predicción de un montaje real con
-montantes simplemente al importar su geometría. Las configuraciones no admitidas
-se rechazan al calcular, conservando la posibilidad de inspeccionar los datos.
+Las cámaras de acristalamiento pueden usar aire, argón, kriptón o xenón ideal puro.
+El aire sigue las propiedades exteriores del proyecto; los gases nobles usan
+20 °C y 101325 Pa. No se permite relleno Miki dentro de un gas noble. Se conservan
+impedancia y componente tangencial del número de onda, pero no se añaden modos
+finitos ni transmisión por separadores.
 
-ISO 12354, transmisión lateral, impacto, lluvia, STC, C/Ctr, IIC, Ln,w y L'nT,w
-siguen fuera del cálculo actual. Un suelo o una cubierta pueden describirse como
-elementos sometidos a ruido aéreo; eso no produce un índice de impacto o lluvia.
+Ancho y alto documentan la geometría. No calculan modos o pérdidas de borde; sí
+intervienen en la fracción de área de una fuga geométrica. La opción `open_area`
+mezcla transmisión del elemento y abertura ideal de transmisión unitaria. Los
+controles Gomperts/Mechel se guardan, pero esos métodos están bloqueados al
+calcular: no existe una implementación verificada de sus soluciones.
 
-La decisión [ADR 0001](adr/0001-scope.md) documenta el alcance inicial v1; esta
-página y [theory.md](theory.md) describen la ampliación efectiva v2. Véase también
-[la revisión de referencias](v2-reference-review.md).
+Floor y Roof abren por defecto las excitaciones de impacto y lluvia. Sus ajustes
+se guardan, pero el motor rechaza esos cálculos. Es posible elegir expresamente
+transmisión aérea de esa geometría, retirando un Floor Cover seleccionado. La
+pestaña Floor Covering muestra la curva ΔL declarada del catálogo para su tipo de
+suelo; no predice el nivel de impactos ni valida la medición. En modo Predicted
+no se dibuja una curva de revestimiento inventada.
+
+Los montantes, perfiles, núcleos y laminados no admitidos requieren modelos
+específicos. Su selección no habilita acoplamiento estructural: se rechaza
+calcularlos y se conserva su configuración. ISO 12354, flancos, STC, C/Ctr, IIC,
+Ln,w y L'nT,w permanecen fuera del cálculo actual.
+
+La [ADR 0001](adr/0001-scope.md) documenta el alcance inicial V1. Las
+[ecuaciones](theory.md) y [referencias V3](v3-reference-review.md) describen la
+ampliación y sus límites actuales.

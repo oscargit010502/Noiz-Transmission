@@ -1,8 +1,11 @@
-"""Airborne transmission through infinite isotropic plates and sealed air gaps.
+"""Airborne transmission through up to four infinite plates and sealed gas gaps.
 
 This is an independently derived thin-plate / plane-wave transfer-matrix model,
 not an implementation of INSUL's prediction methods. It excludes finite panel
 size, shear deformation, frame bridges, leakage, flanking and impact excitation.
+Each gas cavity conserves the exterior tangential wavenumber, including
+evanescent propagation and the finite critical-angle matrix limit. An optional
+porous facing lies on the incident side. A porous slab can also stand alone.
 Optional porous fill uses Miki's empirical rigid-frame equivalent fluid, with a
 warning for extrapolation beyond 0.01 < f/sigma < 1 (sigma in Pa*s/m²). Source:
 Miki 1990, J. Acoust. Soc. Jpn. (E) 11(1), equations 30–34 as reproduced by
@@ -92,6 +95,8 @@ class Plate:
 class Gap:
     """A sealed cavity with optional centred porous fill and no structural bridge.
 
+    Explicit gas density and sound speed override only this cavity. None uses
+    the exterior air values. Custom gas cannot be combined with Miki fill.
     The absorber is a homogeneous isotropic rigid-frame Miki equivalent fluid;
     any residual air space is split equally on its two sides. This idealisation
     cannot represent a mechanically coupled core or an attached resilient layer.
@@ -100,6 +105,8 @@ class Gap:
     depth_m: float
     flow_resistivity_pa_s_m2: float | None = None
     absorber_thickness_m: float = 0.0
+    gas_density_kg_m3: float | None = None
+    gas_sound_speed_m_s: float | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "depth_m", _positive_scalar(self.depth_m, "depth_m"))
@@ -114,11 +121,63 @@ class Gap:
             raise ValueError("Porous fill requires both positive thickness and flow resistivity")
         object.__setattr__(self, "absorber_thickness_m", thickness)
 
+        if (self.gas_density_kg_m3 is None) != (self.gas_sound_speed_m_s is None):
+            raise ValueError("Gas requires both density and sound speed")
+        if self.gas_density_kg_m3 is not None:
+            object.__setattr__(self, "gas_density_kg_m3", _positive_scalar(
+                self.gas_density_kg_m3, "gas_density_kg_m3"))
+            object.__setattr__(self, "gas_sound_speed_m_s", _positive_scalar(
+                self.gas_sound_speed_m_s, "gas_sound_speed_m_s"))
+            if thickness > 0:
+                raise ValueError("Miki porous fill is calibrated for air, not a custom cavity gas")
+
+
+@dataclass(frozen=True)
+class PorousLayer:
+    """Homogeneous rigid-frame Miki layer in air, attached on the incident side.
+
+    A zero thickness layer is exactly absent; its positive resistivity is retained
+    for editing. The mechanical skeleton does not transmit a structural load.
+    """
+
+    thickness_m: float
+    flow_resistivity_pa_s_m2: float
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "thickness_m", _nonnegative(self.thickness_m, "thickness_m"))
+        object.__setattr__(self, "flow_resistivity_pa_s_m2", _positive_scalar(
+            self.flow_resistivity_pa_s_m2, "flow_resistivity_pa_s_m2"))
+
+
+def ideal_gas_properties(
+    gas: str, *, temperature_c: float = 20.0, pressure_pa: float = 101325.0,
+) -> tuple[float, float]:
+    """Return ideal-gas density (kg/m³) and adiabatic sound speed (m/s).
+
+    rho=p*M/(R*T), c=sqrt(gamma*R*T/M), R=8.31446261815324 J/(mol K).
+    M: dry air 28.96546, Ar 39.948, Kr 83.798, Xe 131.293 g/mol;
+    gamma=1.4 for air and 5/3 for the monatomic noble gases. These are pure,
+    ideal, dry gases; no mixtures, thermal boundary losses or temperature gradient.
+    The exterior medium is independent of this cavity-property helper.
+    """
+    molar_masses = {"air": 0.02896546, "argon": 0.039948,
+                    "krypton": 0.083798, "xenon": 0.131293}
+    if not isinstance(gas, str) or gas not in molar_masses:
+        raise ValueError("gas must be air, argon, krypton or xenon")
+    temperature = _real_array(temperature_c, "temperature_c")
+    if temperature.ndim != 0 or float(temperature) <= -273.15:
+        raise ValueError("temperature_c must be a finite scalar above absolute zero")
+    pressure = _positive_scalar(pressure_pa, "pressure_pa")
+    thermal_energy = 8.31446261815324 * (float(temperature) + 273.15)
+    mass = molar_masses[gas]
+    gamma = 1.4 if gas == "air" else 5 / 3
+    return pressure * mass / thermal_energy, math.sqrt(gamma * thermal_energy / mass)
+
 
 def _assembly(plates: Sequence[Plate], gaps: Sequence[Gap]) -> tuple[tuple, tuple]:
     plates, gaps = tuple(plates), tuple(gaps)
-    if not 1 <= len(plates) <= 3 or len(gaps) != len(plates) - 1:
-        raise ValueError("Provide one to three plates and exactly one gap between each pair")
+    if not 1 <= len(plates) <= 4 or len(gaps) != len(plates) - 1:
+        raise ValueError("Provide one to four plates and exactly one gap between each pair")
     if not all(isinstance(plate, Plate) for plate in plates):
         raise ValueError("plates must contain Plate objects")
     if not all(isinstance(gap, Gap) for gap in gaps):
@@ -161,7 +220,17 @@ def miki_characteristics(
     return np.asarray(impedance), np.asarray(wave_number)
 
 
-def _warn_miki_extrapolation(frequencies: FloatArray, gaps: tuple[Gap, ...]) -> None:
+def _warn_miki_extrapolation(
+    frequencies: FloatArray, gaps: tuple[Gap, ...], facing: PorousLayer | None = None,
+) -> None:
+    if facing is not None and facing.thickness_m > 0:
+        lower, upper = miki_valid_frequency_range(facing.flow_resistivity_pa_s_m2)
+        if np.any(frequencies <= lower) or np.any(frequencies >= upper):
+            warnings.warn(
+                f"Facing/porous layer: Miki fit is extrapolated outside "
+                f"{lower:g} < f < {upper:g} Hz; uncertainty is unquantified",
+                MikiExtrapolationWarning, stacklevel=3,
+            )
     for index, gap in enumerate(gaps):
         if gap.flow_resistivity_pa_s_m2 is not None:
             lower, upper = miki_valid_frequency_range(gap.flow_resistivity_pa_s_m2)
@@ -180,6 +249,7 @@ def _coefficients(
     gaps: tuple[Gap, ...],
     density: float,
     speed: float,
+    facing: PorousLayer | None = None,
 ) -> tuple:
     """Broadcasted internal calculation, normalized by exterior wave impedance."""
     with np.errstate(over="ignore", invalid="ignore", divide="ignore", under="ignore"):
@@ -188,6 +258,34 @@ def _coefficients(
         air_impedance = density * speed / cosine
         tangential_fourth = (omega / speed) ** 4 * sine_squared**2
         a, b, c, d = 1.0 + 0j, 0j, 0j, 1.0 + 0j
+        def fluid_layer(thickness, z_characteristic, k, matched_exterior=False):
+            nonlocal a, b, c, d
+            if matched_exterior:
+                phase = omega / speed * cosine * thickness
+                co, js = np.cos(phase), 1j * np.sin(phase)
+                a, b, c, d = (a * co + b * js, a * js + b * co,
+                               c * co + d * js, c * js + d * co)
+                return
+            # The branch has Im(kz)<=0 for exp(j*omega*t); ratios cancel the
+            # branch sign in the matrix. sinc gives the finite critical-angle
+            # limit kz -> 0 without an infinity times zero product.
+            kz = np.sqrt(np.asarray(k**2 - (omega / speed)**2 * sine_squared, dtype=complex))
+            kz = np.where(kz.imag > 0, -kz, kz)
+            phase = kz * thickness
+            co = np.cos(phase)
+            sin_over_kz = thickness * np.sinc(phase / np.pi)
+            upper = 1j * z_characteristic * k * sin_over_kz / air_impedance
+            lower = 1j * kz**2 * sin_over_kz * air_impedance / (z_characteristic * k)
+            a, b, c, d = (a * co + b * lower, a * upper + b * co,
+                           c * co + d * lower, c * upper + d * co)
+
+        def porous_layer(thickness, sigma):
+            z, k = miki_characteristics(frequencies, sigma,
+                                       air_density=density, sound_speed=speed)
+            fluid_layer(thickness, z, k)
+
+        if facing is not None and facing.thickness_m > 0:
+            porous_layer(facing.thickness_m, facing.flow_resistivity_pa_s_m2)
         for index, plate in enumerate(plates):
             stiffness = plate.bending_stiffness_nm * (1 + 1j * plate.loss_factor)
             impedance = (
@@ -197,36 +295,25 @@ def _coefficients(
             b, d = a * impedance + b, c * impedance + d
             if index < len(gaps):
                 gap = gaps[index]
+                gas_density = density if gap.gas_density_kg_m3 is None else gap.gas_density_kg_m3
+                gas_speed = speed if gap.gas_sound_speed_m_s is None else gap.gas_sound_speed_m_s
                 if gap.absorber_thickness_m > 0:
-                    z_porous, k_porous = miki_characteristics(
-                        frequencies, gap.flow_resistivity_pa_s_m2,
-                        air_density=density, sound_speed=speed,
-                    )
-                    # Tangential wavenumber is conserved across every interface.
-                    kz = np.sqrt(k_porous**2 - (omega / speed)**2 * sine_squared)
-                    normal_impedance_ratio = z_porous * k_porous / kz / air_impedance
                     residual = (gap.depth_m - gap.absorber_thickness_m) / 2
-                    layers = (
-                        (omega / speed * cosine * residual, 1.0),
-                        (kz * gap.absorber_thickness_m, normal_impedance_ratio),
-                        (omega / speed * cosine * residual, 1.0),
-                    )
+                    fluid_layer(residual, density * speed, omega / speed, matched_exterior=True)
+                    porous_layer(gap.absorber_thickness_m, gap.flow_resistivity_pa_s_m2)
+                    fluid_layer(residual, density * speed, omega / speed, matched_exterior=True)
                 else:
-                    layers = ((omega / speed * cosine * gap.depth_m, 1.0),)
-                for phase, ratio in layers:
-                    co, js = np.cos(phase), 1j * np.sin(phase)
-                    a, b, c, d = (
-                        a * co + b * js / ratio, a * js * ratio + b * co,
-                        c * co + d * js / ratio, c * js * ratio + d * co,
-                    )
+                    fluid_layer(gap.depth_m, gas_density * gas_speed, omega / gas_speed,
+                                matched_exterior=(gas_density == density and gas_speed == speed))
     return a, b, c, d
 
 
 def _tau(
     frequencies: FloatArray, sine_squared: FloatArray, plates: tuple[Plate, ...],
     gaps: tuple[Gap, ...], density: float, speed: float,
+    facing: PorousLayer | None = None,
 ) -> FloatArray:
-    a, b, c, d = _coefficients(frequencies, sine_squared, plates, gaps, density, speed)
+    a, b, c, d = _coefficients(frequencies, sine_squared, plates, gaps, density, speed, facing)
     with np.errstate(over="ignore", invalid="ignore", divide="ignore", under="ignore"):
         result = np.asarray(4 / np.abs(a + b + c + d) ** 2, dtype=float)
     if np.any(~np.isfinite(result)) or np.any(result <= 0):
@@ -245,12 +332,15 @@ def narrowband_tau(
     incidence_angle_deg: float = 0.0,
     air_density: float = 1.21,
     sound_speed: float = 343.0,
+    facing: PorousLayer | None = None,
 ) -> FloatArray:
     """Return narrowband power transmission at one angle, preserving input shape.
 
     Angles are measured from the normal and must be in [0, 90) degrees.
     """
     plates, gaps = _assembly(plates, gaps)
+    if facing is not None and not isinstance(facing, PorousLayer):
+        raise ValueError("facing must be a PorousLayer or None")
     frequencies = _real_array(frequencies_hz, "frequencies_hz")
     if np.any(frequencies <= 0):
         raise ValueError("frequencies_hz must be positive")
@@ -259,9 +349,9 @@ def narrowband_tau(
         raise ValueError("incidence_angle_deg must be in [0, 90)")
     density = _positive_scalar(air_density, "air_density")
     speed = _positive_scalar(sound_speed, "sound_speed")
-    _warn_miki_extrapolation(frequencies, gaps)
+    _warn_miki_extrapolation(frequencies, gaps, facing)
     return _tau(frequencies, np.asarray(math.sin(math.radians(angle)) ** 2),
-                plates, gaps, density, speed)
+                plates, gaps, density, speed, facing)
 
 
 @lru_cache(maxsize=12)
@@ -278,16 +368,17 @@ def _band_tau(
     centre: float, plates: tuple[Plate, ...], gaps: tuple[Gap, ...],
     density: float, speed: float, sine_squared_limit: float,
     angular_order: int, frequency_order: int,
+    facing: PorousLayer | None = None,
 ) -> float:
     f_nodes, f_weights = _nodes(frequency_order)
     lower, upper = centre * 10 ** (-1 / 20), centre * 10 ** (1 / 20)
     frequencies = lower + (upper - lower) * f_nodes
     if sine_squared_limit == 0:
-        result = _tau(frequencies, np.asarray(0.0), plates, gaps, density, speed)
+        result = _tau(frequencies, np.asarray(0.0), plates, gaps, density, speed, facing)
     else:
         a_nodes, a_weights = _nodes(angular_order)
         result = _tau(frequencies[:, None], (sine_squared_limit * a_nodes)[None, :],
-                      plates, gaps, density, speed) @ a_weights
+                      plates, gaps, density, speed, facing) @ a_weights
     return float(result @ f_weights)
 
 
@@ -295,6 +386,7 @@ def _adaptive_band_tau(
     centre: float, plates: tuple[Plate, ...], gaps: tuple[Gap, ...],
     density: float, speed: float, sine_squared_limit: float, relative_tolerance: float = 1e-4,
     cancel_event: Event | None = None,
+    facing: PorousLayer | None = None,
 ) -> float:
     lower, upper = centre * 10 ** (-1 / 20), centre * 10 ** (1 / 20)
     with warnings.catch_warnings():
@@ -302,7 +394,7 @@ def _adaptive_band_tau(
         try:
             return _resonance_resolved_band_tau(
                 lower, upper, plates, gaps, density, speed,
-                sine_squared_limit, relative_tolerance, cancel_event,
+                sine_squared_limit, relative_tolerance, cancel_event, facing,
             )
         except IntegrationWarning as exc:
             raise NumericalConvergenceError("Adaptive band energy integration did not converge") from exc
@@ -381,6 +473,7 @@ def _resonance_resolved_band_tau(
     lower: float, upper: float, plates: tuple[Plate, ...], gaps: tuple[Gap, ...],
     density: float, speed: float, sine_squared_limit: float, relative_tolerance: float,
     cancel_event: Event | None = None,
+    facing: PorousLayer | None = None,
 ) -> float:
     """Resolve resonances before adaptive energy integration in both dimensions.
 
@@ -395,14 +488,16 @@ def _resonance_resolved_band_tau(
             raise ValueError("Cálculo cancelado")
 
     check_cancelled()
-    total_depth = sum(gap.depth_m for gap in gaps)
-    frequency_samples = max(129, 32 * math.ceil(2 * (upper - lower) * total_depth / speed) + 1)
+    travel_time = sum(gap.depth_m / (gap.gas_sound_speed_m_s or speed) for gap in gaps)
+    if facing is not None:
+        travel_time += facing.thickness_m / speed
+    frequency_samples = max(129, 32 * math.ceil(2 * (upper - lower) * travel_time) + 1)
 
     def frequency_average(u: float) -> float:
         check_cancelled()
 
         def coefficients(f):
-            return _coefficients(np.asarray(f), np.asarray(u), plates, gaps, density, speed)
+            return _coefficients(np.asarray(f), np.asarray(u), plates, gaps, density, speed, facing)
 
         points = _resonance_points(lower, upper, coefficients, frequency_samples)
         edges = np.asarray([lower, *points, upper])
@@ -414,13 +509,13 @@ def _resonance_resolved_band_tau(
             nodes, weights = _nodes(order)
             frequencies = edges[:-1, None] + widths[:, None] * nodes
             integral = float(np.sum((_tau(frequencies, np.asarray(u), plates, gaps,
-                                          density, speed) @ weights) * widths))
+                                          density, speed, facing) @ weights) * widths))
             if previous is not None and abs(integral - previous) <= integral * relative_tolerance / 5:
                 break
             previous = integral
         else:
             integral, error = quad(
-                lambda f: float(_tau(np.asarray(f), np.asarray(u), plates, gaps, density, speed)),
+                lambda f: float(_tau(np.asarray(f), np.asarray(u), plates, gaps, density, speed, facing)),
                 lower, upper, points=points, epsabs=1e-24,
                 epsrel=relative_tolerance / 5, limit=max(400, len(points) * 3),
             )
@@ -430,7 +525,8 @@ def _resonance_resolved_band_tau(
 
     if sine_squared_limit == 0:
         return frequency_average(0.0)
-    if len(plates) == 1 and plates[0].bending_stiffness_nm == 0:
+    if (len(plates) == 1 and plates[0].bending_stiffness_nm == 0
+            and (facing is None or facing.thickness_m == 0)):
         # The exact angular limp-sheet integral also handles the grazing limit.
         def limp_power(frequency):
             check_cancelled()
@@ -446,13 +542,13 @@ def _resonance_resolved_band_tau(
         return value / (upper - lower)
     # The exact grazing endpoint has zero measure; coefficients use its limiting side.
     upper_u = min(sine_squared_limit, 1 - 1e-12)
-    angular_samples = max(257, 32 * math.ceil(2 * upper * total_depth / speed) + 1)
+    angular_samples = max(257, 32 * math.ceil(2 * upper * travel_time) + 1)
 
     def angular_average(frequency: float) -> float:
         check_cancelled()
 
         def coefficients(u):
-            return _coefficients(np.asarray(frequency), np.asarray(u), plates, gaps, density, speed)
+            return _coefficients(np.asarray(frequency), np.asarray(u), plates, gaps, density, speed, facing)
 
         points = _resonance_points(0, upper_u, coefficients, angular_samples)
         edges = np.asarray([0, *points, sine_squared_limit])
@@ -462,13 +558,13 @@ def _resonance_resolved_band_tau(
             nodes, weights = _nodes(order)
             angles = edges[:-1, None] + widths[:, None] * nodes
             integral = float(np.sum((_tau(np.asarray(frequency), angles, plates, gaps,
-                                          density, speed) @ weights) * widths))
+                                          density, speed, facing) @ weights) * widths))
             if previous is not None and abs(integral - previous) <= integral * relative_tolerance / 5:
                 break
             previous = integral
         else:
             integral, error = quad(
-                lambda u: float(_tau(np.asarray(frequency), np.asarray(u), plates, gaps, density, speed)),
+                lambda u: float(_tau(np.asarray(frequency), np.asarray(u), plates, gaps, density, speed, facing)),
                 0, sine_squared_limit, points=points, epsabs=1e-24,
                 epsrel=relative_tolerance / 5, limit=max(400, len(points) * 3),
             )
@@ -479,7 +575,7 @@ def _resonance_resolved_band_tau(
     frequency_points = []
     for u in (0.0, upper_u):
         def coefficients(f):
-            return _coefficients(np.asarray(f), np.asarray(u), plates, gaps, density, speed)
+            return _coefficients(np.asarray(f), np.asarray(u), plates, gaps, density, speed, facing)
 
         frequency_points.extend(_resonance_points(lower, upper, coefficients, frequency_samples))
     # Critical-frequency onsets are additional changes in resonance topology.
@@ -509,6 +605,7 @@ def predict_multilayer(
     angle_limit_deg: float = 78.0,
     quadrature_tolerance_db: float = 0.05,
     cancel_event: Event | None = None,
+    facing: PorousLayer | None = None,
 ) -> FloatArray:
     """Return third-octave element TL, with convergence-checked energy integration.
 
@@ -530,6 +627,46 @@ def predict_multilayer(
     cancellation between integration evaluations and raises ValueError when set.
     """
     plates, gaps = _assembly(plates, gaps)
+    return _predict_bands(
+        plates, gaps, frequencies_hz=frequencies_hz, air_density=air_density,
+        sound_speed=sound_speed, incidence=incidence, angle_limit_deg=angle_limit_deg,
+        quadrature_tolerance_db=quadrature_tolerance_db, cancel_event=cancel_event, facing=facing,
+    )
+
+
+def predict_porous_layer(
+    layer: PorousLayer,
+    *,
+    frequencies_hz: ArrayLike = NOMINAL_BANDS_HZ,
+    air_density: float = 1.21,
+    sound_speed: float = 343.0,
+    incidence: str = "diffuse",
+    angle_limit_deg: float = 78.0,
+    quadrature_tolerance_db: float = 0.05,
+    cancel_event: Event | None = None,
+) -> FloatArray:
+    """Third-octave transmission of an unbacked rigid-frame Miki slab in air.
+
+    This predicts transmitted power, not the rigid-backed absorption coefficient.
+    A zero thickness returns zero TL. Band averaging and numerical controls are
+    identical to ``predict_multilayer``; there is no fictitious bounding plate.
+    """
+    if not isinstance(layer, PorousLayer):
+        raise ValueError("layer must be a PorousLayer")
+    return _predict_bands(
+        (), (), frequencies_hz=frequencies_hz, air_density=air_density,
+        sound_speed=sound_speed, incidence=incidence, angle_limit_deg=angle_limit_deg,
+        quadrature_tolerance_db=quadrature_tolerance_db, cancel_event=cancel_event, facing=layer,
+    )
+
+
+def _predict_bands(
+    plates: tuple[Plate, ...], gaps: tuple[Gap, ...], *, frequencies_hz: ArrayLike,
+    air_density: float, sound_speed: float, incidence: str, angle_limit_deg: float,
+    quadrature_tolerance_db: float, cancel_event: Event | None, facing: PorousLayer | None,
+) -> FloatArray:
+    if facing is not None and not isinstance(facing, PorousLayer):
+        raise ValueError("facing must be a PorousLayer or None")
     nominal = _real_array(frequencies_hz, "frequencies_hz")
     centres = []
     for frequency in nominal.flat:
@@ -549,13 +686,17 @@ def predict_multilayer(
         raise ValueError("angle_limit_deg must be in (0, 90]")
     sine_squared = 0.0 if incidence == "normal" else math.sin(math.radians(angle)) ** 2
     _warn_miki_extrapolation(np.asarray([min(centres) * 10 ** (-1 / 20),
-                                       max(centres) * 10 ** (1 / 20)]), gaps)
+                                       max(centres) * 10 ** (1 / 20)]), gaps, facing)
+    if cancel_event is not None and cancel_event.is_set():
+        raise ValueError("Cálculo cancelado")
+    if not plates and (facing is None or facing.thickness_m == 0):
+        return np.zeros_like(nominal)
     result = []
     for nominal_frequency, centre in zip(nominal.flat, centres, strict=True):
         try:
             coefficient = _adaptive_band_tau(
                 centre, plates, gaps, density, speed, sine_squared,
-                min(1e-4, tolerance * math.log(10) / 100), cancel_event,
+                min(1e-4, tolerance * math.log(10) / 100), cancel_event, facing,
             )
         except NumericalConvergenceError as exc:
             raise NumericalConvergenceError(

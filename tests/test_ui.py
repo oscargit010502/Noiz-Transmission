@@ -1,4 +1,4 @@
-"""User-workflow regressions for the V2 workbench, with offscreen Qt rendering."""
+"""User-workflow regressions for saved V2 projects in the V3 workbench, with offscreen Qt rendering."""
 
 import os
 import threading
@@ -17,6 +17,7 @@ from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 from noiz_transmission.application.assemblies import AssemblyPrediction
 from noiz_transmission.application.assembly_services import (
     default_project,
+    default_project_v3,
     load_assembly,
     save_assembly,
 )
@@ -35,11 +36,14 @@ def qt_app():
 def window(qt_app, monkeypatch, tmp_path):
     monkeypatch.setenv("NOIZ_CATALOG_PATH", str(tmp_path / "catalog.json"))
     instance = MainWindow()
+    instance._load_into_editor(default_project())
     instance.show()
     qt_app.processEvents()
     yield instance
     instance._saved_project = instance.project
+    instance._saved_variants = dict(instance._variants)
     instance._input_error = ""
+    instance._field_errors.clear()
     instance._comparison_dirty = False
     instance.close()
     qt_app.processEvents()
@@ -63,17 +67,17 @@ def wait_for_result(app, window, timeout=8):
 
 
 def test_layout_editor_is_primary_and_results_can_collapse(window, qt_app):
-    assert window.part_tabs.count() == 3
+    assert window.part_tabs.count() == 4
     assert window.layer_table.rowCount() == 1
     assert window.right_splitter.sizes()[0] > window.right_splitter.sizes()[1]
-    window.resize(900, 650)
+    window.resize(1024, 680)
     qt_app.processEvents()
-    assert window.size().width() == 900
-    assert window.size().height() == 650
+    assert window.size().width() == 1024
+    assert window.size().height() == 680
     window.toggle_results_button.click()
     qt_app.processEvents()
     assert not window.results_panel.isVisible()
-    assert window.layer_fields["density_kg_m3"].isVisible()
+    assert window.layer_fields["thickness_mm"].isVisible()
     window.restore_layout()
     assert window.results_panel.isVisible()
 
@@ -91,27 +95,28 @@ def test_multilayer_edits_reorder_and_preserve_each_panel(window):
     window.move_layer(-1)
     assert window.project.panels[0].layers[0].name == "Segunda capa"
     window.remove_layer()
-    assert window.project.panels[0].layers == (first,)
+    assert not window.project.panels[0].layers[0].enabled
+    assert window.project.panels[0].layers[1] == first
     for _ in range(8):
         window.add_layer()
     assert len(window.project.panels[0].layers) == 6
     assert not window.layer_buttons["add"].isEnabled()
 
 
-def test_topology_reduction_requires_confirmation_and_preserves_existing(window, monkeypatch):
-    original = window.project.panels
+def test_topology_variants_restore_previous_edits_without_destructive_confirmation(window):
+    original = window.project
     window.assembly_combo.setCurrentIndex(2)
     assert len(window.project.panels) == 3
-    assert window.project.panels[:2] == original
-    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.No)
+    assert window.project.panels[:2] == original.panels
+    window.layer_fields["thickness_mm"].setValue(27)
+    triple = window.project
     window.assembly_combo.setCurrentIndex(0)
-    assert len(window.project.panels) == 3
-    assert window.assembly_combo.currentIndex() == 2
-    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
-    window.assembly_combo.setCurrentIndex(0)
-    assert window.project.panels == (original[0],)
-    assert window.project.cavities == ()
-    assert window.part_tabs.count() == 1
+    assert len(window.project.panels) == 1
+    assert window.part_tabs.count() == 3
+    window.assembly_combo.setCurrentIndex(2)
+    assert window.project == triple
+    window.assembly_combo.setCurrentIndex(1)
+    assert window.project == original
 
 
 def test_invalid_cavity_remains_blocked_when_another_field_changes(window):
@@ -248,7 +253,7 @@ def test_cancel_close_and_new_preserve_unsaved_project(window, monkeypatch):
     assert window.isVisible()
     monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Discard)
     window.new_project()
-    assert window.project == default_project()
+    assert window.project == default_project_v3()
 
 
 def test_real_engine_single_leaf_reaches_plot_and_band_table(window, qt_app):
@@ -307,7 +312,7 @@ def test_invalid_edit_cancels_work_and_preserves_validation_error(window, qt_app
 def test_loaded_values_expand_editor_ranges_without_clipping(window):
     project = default_project()
     layer = replace(project.panels[0].layers[0], thickness_mm=6500.125,
-                    density_kg_m3=150000, loss_factor=12, count=125,
+                    density_kg_m3=150000, loss_factor=12, count=10,
                     young_modulus_pa=100, poisson_ratio=-.9995)
     cavity = replace(project.cavities[0], depth_mm=12000, stud_spacing_mm=20000,
                      absorber_thickness_mm=11000, flow_resistivity_pa_s_m2=2e8)
@@ -316,7 +321,7 @@ def test_loaded_values_expand_editor_ranges_without_clipping(window):
     window._load_into_editor(project)
     for key in ("thickness_mm", "density_kg_m3", "loss_factor", "poisson_ratio"):
         assert window.layer_fields[key].value() == pytest.approx(getattr(layer, key))
-    assert window.count_spin.value() == 125
+    assert window.count_spin.value() == 10
     assert window.layer_fields["young_modulus_pa"].value() == pytest.approx(1e-7)
     window.part_tabs.setCurrentIndex(1)
     assert window.cavity_fields["depth_mm"].value() == 12000

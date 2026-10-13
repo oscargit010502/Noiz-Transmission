@@ -28,6 +28,9 @@ jobs:
       - run: uv run pytest
       - run: uv run noiz predict examples/single_panel.noiz.json --output-dir artifacts/example
       - run: uv run noiz assembly examples/double_leaf.noiz.json --output-dir artifacts/v2
+      - run: uv run noiz assembly examples/v3_single.noiz.json --output-dir artifacts/v3
+      - run: uv run noiz assembly examples/v3_glazing.noiz.json --output-dir artifacts/glazing
+      - run: uv run noiz assembly examples/v3_porous.noiz.json --output-dir artifacts/porous
       - run: uv run python -m build --installer uv
       - uses: actions/upload-artifact@v4
         with:
@@ -36,3 +39,6 @@ jobs:
             dist/*
             artifacts/example/*
             artifacts/v2/*
+            artifacts/v3/*
+            artifacts/glazing/*
+            artifacts/porous/*
