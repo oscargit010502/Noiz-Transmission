@@ -1,13 +1,13 @@
-# Probar Noiz Transmission V3 en Windows
+# Probar Noiz Transmission V4 en Windows
 
 La ventana se abre en tu ordenador. Esta entrega contiene código y un lanzador
 `.cmd`; todavía no contiene un instalador `.exe`.
 
 ## Descargar y abrir
 
-1. Descarga el ZIP **V3** de la conversación y selecciona **Extraer todo**.
+1. Descarga el ZIP **V4** de la conversación y selecciona **Extraer todo**.
    La carpeta `Noiz-Transmission` debe contener `INICIAR_NOIZ.cmd`, `pyproject.toml`,
-   `uv.lock`, `examples` y `src`. Usa una carpeta nueva para conservar tu V2.
+   `uv.lock`, `examples` y `src`. Usa una carpeta nueva para conservar tus versiones anteriores.
 2. Instala **uv** siguiendo sus
    [instrucciones oficiales para Windows](https://docs.astral.sh/uv/getting-started/installation/).
    Cierra y vuelve a abrir las ventanas de terminal después de instalarlo.
@@ -30,7 +30,25 @@ uv run --locked --extra desktop noiz-transmission
 
 No uses `/workspace/...` en tu PC: esa es la ubicación de la copia en la nube.
 
-## Recorrido para comprobar la V3
+## Qué cambia en la V4
+
+La cabecera ocupa menos altura; el índice aparece junto a la tabla de octavas a
+la izquierda. El selector permite **Rw / STC** para transmisión aérea. STC utiliza
+el procedimiento legado 32/8 descrito en [criterios de clasificación](docs/v4-ratings.md),
+con alcance provisional; no es una conversión de Rw. IIC y Ln,w requieren el motor
+de impacto pendiente; L’nT,w corresponde a recintos y no es el mismo índice.
+
+Las listas tienen más altura. Search, Thickness y Quantity comparten una fila y
+**Propiedades** despliega los parámetros adicionales. Qt dibuja sus controles
+nativos, incluidas las flechas de incremento/decremento. El render permite
+perspectiva con vista parcial de la cavidad y un corte 2D estrecho. Arrastrar hacia
+la izquierda gira a la izquierda; arrastrar hacia arriba gira hacia arriba.
+
+Si añadiste materiales propios en V3, conserva tu `local_data/catalog-v3.json`
+y cópialo a la nueva carpeta V4, en lugar de reemplazarlo por el catálogo base.
+Los proyectos V1/V2/V3 siguen siendo compatibles; V4 conserva el esquema 3.
+
+## Recorrido para comprobar la V4
 
 1. Abre **`examples/v3_single.noiz.json`** con **Abrir…**. En Wall → Single →
    Panel 1 → Layer 1 encontrarás una placa sintética de 12,5 mm y 10 kg/m².
@@ -65,10 +83,20 @@ No uses `/workspace/...` en tu PC: esa es la ubicación de la copia en la nube.
 10. Usa **Archivo → Exportar → Informe HTML…** o **Datos CSV…**. El informe
     incluye condiciones, advertencias y procedencia y se abre en un navegador.
 
-En **Dimensiones y condiciones de cálculo…** puedes elegir campo difuso o
-incidencia normal. Rw solo se muestra para campo difuso. Las dimensiones describen
+En **Dimensiones…** puedes elegir campo difuso o
+incidencia normal. Rw y STC solo se muestran para campo difuso. Las dimensiones describen
 el elemento y permiten calcular la proporción de fuga; no convierten el modelo de
 placa infinita en una simulación de tamaño finito.
+
+Para revisar específicamente el render, abre **`examples/v4_visual_demo.noiz.json`**.
+Wall → Double contiene dos placas, absorbente y un montante metálico U sintético.
+Alterna 3D/2D y arrastra la vista. La variante Roof → Single del mismo archivo
+muestra una chapa trapezoidal. Es un ejemplo de geometría: el cálculo acústico
+de montantes y chapas perfiladas sigue pendiente. Usa `v3_single.noiz.json` para
+comprobar un cálculo compatible: **Rw 29 dB / STC 28** antes de editar sus entradas.
+
+La ventana admite un mínimo de 1024×620 píxeles lógicos; en ese tamaño, algunas
+páginas avanzadas necesitan desplazamiento. Se recomienda 1280×720 o superior.
 
 ## Probar los otros elementos
 
@@ -122,18 +150,19 @@ Noiz-Transmission/
 │   ├── adapters/        Contrastes con Phonometry
 │   └── ui/              Interfaz de escritorio
 ├── local_data/          Catálogo personal; excluido de Git
-├── examples/            Proyectos V1, V2 y V3
+├── examples/            Proyectos compatibles y demostración visual V4
 ├── tests/               Pruebas automáticas
 ├── validation/          Casos matemáticos
 ├── docs/                Teoría, alcance y fuentes
 └── .github/workflows/   CI para Windows y Linux
 ```
 
-El código V3 se publica en
-[`codex/noiz-transmission-v3`](https://github.com/oscargit010502/Noiz-Transmission/tree/codex/noiz-transmission-v3).
+El código V4 se publica en
+[`codex/noiz-transmission-v4`](https://github.com/oscargit010502/Noiz-Transmission/tree/codex/noiz-transmission-v4).
 Abre ese enlace para ver las carpetas. En la portada del repositorio, cambia
 **main** por esa rama. También puedes descargar **Code → Download ZIP**.
-La V2 sigue en su rama `codex/noiz-transmission-v2`. Los XML y el catálogo personal
+Las versiones anteriores siguen en las ramas `codex/noiz-transmission-v2` y
+`codex/noiz-transmission-v3`. Los XML y el catálogo personal
 no forman parte de esas ramas públicas.
 
 En Codex, la copia está en `/workspace/Noiz-Transmission`. Las comprobaciones de

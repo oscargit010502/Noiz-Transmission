@@ -1,17 +1,17 @@
 # Hoja de ruta
 
-La versión **0.3.0** amplía la navegación por elementos y composiciones, conserva
+La versión **0.4.0** amplía la navegación por elementos y composiciones, conserva
 variantes y añade cuatro hojas, gases, Facing y Porous al modelo ideal. La
 prioridad científica sigue siendo determinar dónde ese modelo describe ensayos
 reales. Los controles de funciones pendientes se identifican y no producen
 resultados atribuidos a modelos que aún no existen.
 
-| Área | Entrega V3 | Siguiente criterio de aceptación |
+| Área | Entrega V4 | Siguiente criterio de aceptación |
 | --- | --- | --- |
 | Motor | Una a cuatro hojas, flexión/pérdidas, gas ideal, Miki en cámara/Facing/lámina libre, bandas integradas | Revisar fuentes primarias y contrastar curvas experimentales reservadas |
 | Experiencia de uso | Pestañas anidadas, productos integrados, espesor/cantidad, 3D rotatorio/2D, gráfica ajustable y comparación | Pruebas con consultores y ejecución nativa en Windows |
 | Catálogo internacional | Siete familias XML10.0/8: 3242 entradas; compatibilidad 9.0/22; lectura ΔL con procedencia | Verificar propiedades y ensayos; ampliar datos públicos redistribuibles |
-| Clasificación | Rw provisional; resumen energético por octavas | Revisión primaria ISO 717-1; C/Ctr y STC con pruebas propias |
+| Clasificación | Rw y STC32/8 provisionales; resumen energético por octavas | Revisión primaria ISO 717-1/ASTM E413 de edición aplicable; C/Ctr |
 | Reproducción | Esquema 3 con composición activa y variantes, migración V1/V2, CLI e informes | Expedientes completos de validación y límites por familia |
 | Distribución | Fuentes y paquete Python | Instalador Windows probado, inventario de licencias y actualización revisados |
 
@@ -44,7 +44,7 @@ tolerancias y métricas antes de ajustar parámetros; separar calibración y eva
 y publicar también los casos fallidos. Para Facing/Porous se necesitan propiedades
 verificadas y mediciones apropiadas a la transmisión de láminas sin respaldo.
 
-STC, C/Ctr, IIC, Ln,w, L'nT,w y el aislamiento entre recintos ISO 12354 requieren
+La conformidad de STC con una edición normativa, C/Ctr, IIC, Ln,w, L'nT,w y el aislamiento entre recintos ISO 12354 requieren
 rutas de cálculo y normas específicas. La selección de Floor o Roof no convierte
 TL aéreo en impacto o lluvia; esas excitaciones están bloqueadas mientras falten
 sus modelos.

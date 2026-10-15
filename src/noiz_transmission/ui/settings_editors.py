@@ -1,4 +1,4 @@
-"""Editors for physically distinct V3 settings, with explicit model availability."""
+"""Compact native editors with explicit physical-model availability."""
 
 from __future__ import annotations
 
@@ -102,11 +102,14 @@ class LeakEditor(_Editor):
         super().__init__(LeakSettings(), parent)
         self.entries = ()
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(2, 2, 2, 2)
+        layout.setSpacing(3)
         self.enabled_check = QCheckBox("Enable Leak · incluir fuga")
         layout.addWidget(self.enabled_check)
         self.controls = QWidget()
         body = QVBoxLayout(self.controls)
         body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(3)
         kind_row = QHBoxLayout()
         self.kind_group = QButtonGroup(self)
         self.slit_radio = QRadioButton("Slit · rendija")
@@ -116,6 +119,7 @@ class LeakEditor(_Editor):
             kind_row.addWidget(button)
         body.addLayout(kind_row)
         self.form = QFormLayout()
+        self.form.setVerticalSpacing(2)
         self.height_spin = _number(.000001)
         self.length_spin = _number(.000001)
         self.radius_spin = _number(.000001)
@@ -139,6 +143,7 @@ class LeakEditor(_Editor):
         self.mechel_controls = QWidget()
         mechel = QFormLayout(self.mechel_controls)
         mechel.setContentsMargins(0, 0, 0, 0)
+        mechel.setVerticalSpacing(2)
         seal_row = QWidget()
         seal_layout = QHBoxLayout(seal_row)
         seal_layout.setContentsMargins(0, 0, 0, 0)
@@ -266,31 +271,41 @@ class _PorousEditor(_Editor):
         super().__init__(settings, parent)
         self._is_facing = facing
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(2, 2, 2, 2)
+        layout.setSpacing(3)
         self.enabled_check = QCheckBox("Facing · incluir revestimiento poroso")
         self.enabled_check.setVisible(facing)
         layout.addWidget(self.enabled_check)
         self.controls = QWidget()
         body = QVBoxLayout(self.controls)
         body.setContentsMargins(0, 0, 0, 0)
-        form = QFormLayout()
+        body.setSpacing(3)
         self.thickness_spin = _number(0 if facing else .001)
         self.sigma_spin = _number(0, 1e12, 2)
         self.sigma_spin.setSpecialValueText("Sin definir")
         self.count_spin = QSpinBox()
         self.count_spin.setRange(0, 10)
-        form.addRow("Thickness [mm]", self.thickness_spin)
-        form.addRow("Resistividad σ [Pa·s/m²]", self.sigma_spin)
-        if facing:
-            form.addRow("Quantity · 0 excluye el revestimiento", self.count_spin)
-        body.addLayout(form)
-        self.material_label = _label("Material manual")
-        body.addWidget(self.material_label)
         self.picker = ProductPicker(entries, kind="absorption")
+        self.thickness_spin.setMaximumWidth(100)
+        self.count_spin.setMaximumWidth(55)
+        self.count_spin.setToolTip("Cantidad; 0 excluye el revestimiento")
+        self.picker.search_row.addWidget(_label("Thickness [mm]"))
+        self.picker.search_row.addWidget(self.thickness_spin)
+        if facing:
+            self.picker.search_row.addWidget(_label("Qty"))
+            self.picker.search_row.addWidget(self.count_spin)
         body.addWidget(self.picker, 1)
-        body.addWidget(_label(
-            "Miki · fluido equivalente de esqueleto rígido. Introduce σ con su propia fuente; "
-            "el campo Damping del catálogo no se interpreta como resistividad."
-        ))
+        details = QHBoxLayout()
+        self.material_label = _label("Material manual")
+        details.addWidget(self.material_label, 1)
+        details.addWidget(_label("σ [Pa·s/m²]"))
+        self.sigma_spin.setMaximumWidth(125)
+        details.addWidget(self.sigma_spin)
+        body.addLayout(details)
+        note = _label("Miki · introduce la resistividad con su propia fuente.")
+        note.setToolTip("Fluido equivalente de esqueleto rígido. El campo Damping del catálogo "
+                        "no se interpreta como resistividad al flujo.")
+        body.addWidget(note)
         layout.addWidget(self.controls)
         self.enabled_check.toggled.connect(lambda value: self._set(enabled=value))
         self.thickness_spin.valueChanged.connect(lambda value: self._set(thickness_mm=value))
@@ -348,6 +363,8 @@ class RainfallEditor(_Editor):
     def __init__(self, parent=None):
         super().__init__(RainfallSettings(), parent)
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(2, 2, 2, 2)
+        layout.setSpacing(3)
         row = QHBoxLayout()
         self.rain_group = QButtonGroup(self)
         self.laboratory_radio = QRadioButton("Laboratory Rain")
@@ -357,6 +374,7 @@ class RainfallEditor(_Editor):
             row.addWidget(button)
         layout.addLayout(row)
         self.form = QFormLayout()
+        self.form.setVerticalSpacing(2)
         self.class_combo = QComboBox()
         for title in ("Moderate", "Intense", "Heavy", "Cloudburst"):
             self.class_combo.addItem(title, title.lower())

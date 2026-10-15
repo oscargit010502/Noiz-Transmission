@@ -1,6 +1,6 @@
 # Reproducción del entorno y los resultados
 
-## Instalación y escritorio V3 (0.3.0)
+## Instalación y escritorio V4 (0.4.0)
 
 Se requiere Python 3.13 o 3.14 y `uv`. `pyproject.toml` define extras y `uv.lock`
 fija versiones y hashes. Desde PowerShell, en el checkout:
@@ -188,3 +188,13 @@ El instalador de Windows y su inventario necesitan revisión específica antes d
 publicarse. La licencia MIT de la raíz no relicencia Qt ni catálogos de terceros.
 Publicar un entorno de Codex tampoco publica automáticamente cambios en GitHub:
 la publicación del código tiene su propio commit, rama y envío al repositorio.
+
+## Reproducción de la interfaz V4
+
+V4 conserva los archivos de esquema 3 y los ejemplos físicos V3. El selector
+Rw/STC no modifica las entradas ni recalcula la curva. Los informes conservan
+ambos valores y el identificador `STC-legacy-32-8-whole-dB-v1` cuando es aplicable.
+Las dimensiones documentadas de ventana son píxeles lógicos de Qt: a escala
+150%, 1280×720 lógicos ocupan 1920×1080 píxeles físicos, antes del marco del SO.
+En Linux sin pantalla puede verificarse la escala en procesos separados mediante
+`QT_SCALE_FACTOR=1.5 QT_QPA_PLATFORM=offscreen uv run pytest tests/test_ui_v4.py`.

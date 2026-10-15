@@ -34,6 +34,7 @@ from noiz_transmission.catalog import (
     merge_catalog,
     save_catalog,
 )
+from noiz_transmission.core.ratings import STC_PROCEDURE
 from noiz_transmission.core.transfer import NumericalConvergenceError
 
 
@@ -65,7 +66,9 @@ def _assembly(args: argparse.Namespace) -> int:
     predictions = tuple(predict_assembly(load_assembly(path)) for path in args.projects)
     payload = {
         "schema_version": 3, "software": _software(),
-        "predictions": [asdict(result) for result in predictions],
+        "predictions": [{**asdict(result), "stc_db": result.stc_db,
+                         "stc_procedure": STC_PROCEDURE if result.stc_db is not None else None}
+                        for result in predictions],
     }
     result_json = json.dumps(payload, indent=2, ensure_ascii=False, allow_nan=False) + "\n"
     _publish_assembly(predictions, args.output_dir, result_json)

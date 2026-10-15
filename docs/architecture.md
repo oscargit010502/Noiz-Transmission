@@ -1,4 +1,4 @@
-# Arquitectura de Noiz Transmission 0.3.0
+# Arquitectura de Noiz Transmission 0.4.0
 
 Noiz Transmission es un banco de trabajo de escritorio para Windows, con interfaz
 PySide6 y ejecución por comandos. V3 permite componer hasta cuatro hojas, con seis
@@ -12,7 +12,7 @@ son necesarias, pero no sustituyen la validación del modelo físico.
 
 ## Cinco componentes
 
-| Componente | Responsabilidad y estado V3 |
+| Componente | Responsabilidad y estado V4 |
 | --- | --- |
 | Motor independiente | Hasta cuatro placas con masa, flexión y amortiguamiento; cámaras con gas; Miki en relleno, Facing y lámina porosa; integración energética; Rw provisional |
 | Biblioteca | XML 9.0/22 y 10.0/8 de siete familias; filtros y procedencia conservada; ejemplos sintéticos públicos |
@@ -100,9 +100,22 @@ no se dibuja una curva de revestimiento inventada.
 
 Los montantes, perfiles, núcleos y laminados no admitidos requieren modelos
 específicos. Su selección no habilita acoplamiento estructural: se rechaza
-calcularlos y se conserva su configuración. ISO 12354, flancos, STC, C/Ctr, IIC,
+calcularlos y se conserva su configuración. ISO 12354, flancos, C/Ctr, IIC,
 Ln,w y L'nT,w permanecen fuera del cálculo actual.
 
 La [ADR 0001](adr/0001-scope.md) documenta el alcance inicial V1. Las
 [ecuaciones](theory.md) y [referencias V3](v3-reference-review.md) describen la
 ampliación y sus límites actuales.
+
+## Presentación V4
+
+La interfaz utiliza el estilo nativo de Qt, fuente de 9 pt y layouts compactos.
+No se sobrescriben bordes ni subcontroles de los spin boxes. La tabla superior
+calcula su altura con las métricas de encabezados y filas; los productos ocupan
+el espacio flexible y las propiedades adicionales son plegables.
+
+El selector Rw/STC opera sobre la predicción vigente y las comparaciones sin
+recalcular TL. `AssemblyPrediction.stc_db` es una propiedad calculada; el proyecto
+conserva el esquema 3. CSV/HTML/JSON declaran también el procedimiento STC.
+La vista usa una cámara en perspectiva y una sección 2D; la geometría visual de
+montantes y perfiles no modifica la matriz acústica.

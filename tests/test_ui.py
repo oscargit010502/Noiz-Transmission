@@ -12,6 +12,7 @@ import pytest
 pytest.importorskip("PySide6", reason="Install desktop extra to test the GUI")
 pytest.importorskip("pyqtgraph", reason="Install desktop extra to test the plot")
 
+from PySide6.QtCore import QEvent
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 
 from noiz_transmission.application.assemblies import AssemblyPrediction
@@ -46,6 +47,8 @@ def window(qt_app, monkeypatch, tmp_path):
     instance._field_errors.clear()
     instance._comparison_dirty = False
     instance.close()
+    instance.deleteLater()
+    qt_app.sendPostedEvents(instance, QEvent.Type.DeferredDelete)
     qt_app.processEvents()
 
 

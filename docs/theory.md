@@ -300,7 +300,9 @@ fronterizas por redondeo binario. No se añade la regla individual de 8 dB de ST
 El procedimiento se contrasta con Phonometry 3.3.0. La revisión normativa primaria
 completa continúa pendiente: el resultado se presenta como **Rw orientativo**,
 no como certificación ISO 717-1. El servicio no asigna Rw al modo de incidencia
-normal. C/Ctr, STC y las clasificaciones de impacto todavía no están implementadas.
+normal. C/Ctr y las clasificaciones de impacto todavía no están implementadas.
+V4 añade STC provisional con un procedimiento independiente 32/8, redondeo entero
+y bandas 125–4000 Hz; véase [criterios completos y fuentes](v4-ratings.md).
 
 ## Límites del resultado
 

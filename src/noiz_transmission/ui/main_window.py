@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QRadioButton,
     QScrollArea,
     QSizePolicy,
     QSlider,
@@ -201,36 +202,38 @@ class MainWindow(QMainWindow):
         except (OSError, ValueError) as exc:
             self.entries = ()
             catalog_error = str(exc)
-        self.resize(1480, 940)
-        self.setMinimumSize(1024, 680)
+        self.resize(1366, 768)
+        self.setMinimumSize(1024, 620)
+        compact_font = QFont(self.font())
+        compact_font.setPointSizeF(9)
+        self.setFont(compact_font)
         self.setStyleSheet(STYLESHEET)
         self._build_actions()
         content = QWidget()
         content.setObjectName("workspace")
         root = QVBoxLayout(content)
-        root.setContentsMargins(10, 8, 10, 5)
-        root.setSpacing(8)
-        root.addLayout(self._header())
+        root.setContentsMargins(4, 2, 4, 2)
+        root.setSpacing(2)
         body = QHBoxLayout()
-        body.setSpacing(9)
+        body.setSpacing(4)
         body.addWidget(self._sidebar())
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.main_splitter.setChildrenCollapsible(False)
-        self.main_splitter.setHandleWidth(5)
+        self.main_splitter.setHandleWidth(4)
         self.main_splitter.addWidget(self._construction())
         self.right_splitter = QSplitter(Qt.Orientation.Vertical)
         self.right_splitter.setChildrenCollapsible(False)
-        self.right_splitter.setHandleWidth(5)
+        self.right_splitter.setHandleWidth(4)
         self.right_splitter.addWidget(self._editor())
         self.results_panel = self._results()
         self.right_splitter.addWidget(self.results_panel)
         self.right_splitter.setStretchFactor(0, 3)
         self.right_splitter.setStretchFactor(1, 1)
-        self.right_splitter.setSizes([620, 190])
+        self.right_splitter.setSizes([500, 180])
         self.main_splitter.addWidget(self.right_splitter)
         self.main_splitter.setStretchFactor(0, 1)
         self.main_splitter.setStretchFactor(1, 3)
-        self.main_splitter.setSizes([430, 920])
+        self.main_splitter.setSizes([450, 820])
         body.addWidget(self.main_splitter, 1)
         root.addLayout(body, 1)
         self.setCentralWidget(content)
@@ -296,78 +299,117 @@ class MainWindow(QMainWindow):
         toolbar.addSeparator()
         toolbar.addAction(self.calculate_action)
         toolbar.addAction(self.export_action)
-        self.addToolBar(toolbar)
-
-    def _header(self) -> QHBoxLayout:
-        row = QHBoxLayout()
-        row.setSpacing(18)
-        brand = QVBoxLayout()
-        brand.setSpacing(2)
-        brand.addWidget(label("Noiz Transmission", "brand"))
-        brand.addWidget(label("WORKBENCH V3  /  ELEMENTOS CONSTRUCTIVOS", "muted"))
-        row.addLayout(brand)
+        toolbar.setObjectName("projectToolbar")
         self.name_edit = QLineEdit(self.project.name)
         self.name_edit.setAccessibleName("Nombre del proyecto")
         self.name_edit.setPlaceholderText("Nombre del proyecto")
+        self.name_edit.setMaximumWidth(210)
         self.name_edit.setMinimumWidth(100)
         self.name_edit.textChanged.connect(self._name_changed)
-        row.addWidget(self.name_edit, 1)
-        self.rw_value = self._metric(row, "Rw estimado", "— dB")
-        self.mass_value = self._metric(row, "Masa superficial", "— kg/m²")
-        self.thickness_value = self._metric(row, "Espesor total", "— mm")
+        toolbar.addSeparator()
+        toolbar.addWidget(self.name_edit)
+        self.addToolBar(toolbar)
+
+    def _header(self) -> QHBoxLayout:
+        """Place the complete octave table and rating beside the construction view."""
+        row = QHBoxLayout()
+        row.setSpacing(6)
+        self.octave_table = QTableWidget(1, 7)
+        self.octave_table.setHorizontalHeaderLabels(["63", "125", "250", "500", "1k", "2k", "4k"])
+        self.octave_table.verticalHeader().hide()
+        self.octave_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.octave_table.horizontalHeader().setMinimumSectionSize(25)
+        self.octave_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.octave_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        self.octave_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.octave_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.octave_table.setToolTip("TL por octavas [dB]. Promedio energético de la transmisión de tres tercios de octava.")
+        self.octave_table.setMinimumWidth(224)
+        self.octave_table.setMaximumWidth(310)
+        self._fit_octave_table()
+        row.addWidget(self.octave_table, 3)
+        rating = QVBoxLayout()
+        rating.setSpacing(0)
+        rating_row = QHBoxLayout()
+        rating_row.setSpacing(3)
+        self.rating_combo = QComboBox()
+        self.rating_combo.setAccessibleName("Índice de clasificación acústica")
+        self.rating_combo.setMinimumWidth(64)
+        self.rating_combo.currentIndexChanged.connect(self._rating_changed)
+        rating_row.addWidget(self.rating_combo)
+        self.rw_value = label("— dB", "ratingValue")
+        font = QFont(self.font())
+        font.setPointSizeF(17)
+        font.setBold(True)
+        self.rw_value.setFont(font)
+        rating_row.addWidget(self.rw_value, 1)
+        rating.addLayout(rating_row)
+        self.rating_detail = label("Predicción preliminar", "muted")
+        self.rating_detail.setToolTip("Clasificación de una predicción; no equivale a un ensayo de laboratorio.")
+        rating.addWidget(self.rating_detail)
+        row.addLayout(rating, 2)
+        # Mass and thickness live in the construction footer rather than a full-width banner.
+        self.mass_value = label("— kg/m²", "muted")
+        self.thickness_value = label("— mm", "muted")
         return row
 
-    @staticmethod
-    def _metric(row: QHBoxLayout, title: str, text: str) -> QLabel:
-        column = QVBoxLayout()
-        column.setSpacing(0)
-        column.addWidget(label(title, "muted"))
-        value = label(text, "metric")
-        column.addWidget(value)
-        row.addLayout(column)
-        return value
+    def _fit_octave_table(self) -> None:
+        metrics = self.octave_table.fontMetrics()
+        row_height = max(metrics.height() + 6, self.octave_table.verticalHeader().minimumSectionSize())
+        header = self.octave_table.horizontalHeader()
+        header_height = max(metrics.height() + 6, header.sizeHint().height())
+        header.setFixedHeight(header_height)
+        self.octave_table.setRowHeight(0, row_height)
+        self.octave_table.setFixedHeight(header_height + row_height + 2 * self.octave_table.frameWidth())
 
     def _sidebar(self) -> QWidget:
         side = QWidget()
-        side.setFixedWidth(104)
+        side.setObjectName("elementSidebar")
+        side.setFixedWidth(84)
         layout = QVBoxLayout(side)
-        layout.setContentsMargins(0, 8, 0, 0)
-        layout.setSpacing(5)
-        layout.addWidget(label("ELEMENTO", "muted"))
+        layout.setContentsMargins(0, 4, 0, 0)
+        layout.setSpacing(3)
         self.element_group = QButtonGroup(self)
         self.element_buttons = {}
         for title, key in ELEMENTS:
-            button = QPushButton(title)
+            button = QRadioButton(title)
             button.setObjectName("nav")
-            button.setCheckable(True)
             button.clicked.connect(lambda checked=False, kind=key: self._change_element(kind))
             self.element_group.addButton(button)
             self.element_buttons[key] = button
             layout.addWidget(button)
+        layout.addSpacing(14)
+        self.view_combo = QComboBox()
+        self.view_combo.addItems(["3D · rotar", "2D · corte"])
+        self.view_combo.setAccessibleName("Vista del elemento")
+        self.view_combo.currentIndexChanged.connect(lambda index: self.section_view.set_exploded(index == 0))
+        layout.addWidget(self.view_combo)
+        layout.addWidget(label("Opacidad", "muted"))
+        self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
+        self.opacity_slider.setRange(10, 100)
+        self.opacity_slider.setValue(100)
+        self.opacity_slider.valueChanged.connect(self._opacity_changed)
+        layout.addWidget(self.opacity_slider)
+        reset = QPushButton("Restablecer")
+        reset.setToolTip("Restablecer rotación y zoom")
+        reset.clicked.connect(self._reset_view)
+        layout.addWidget(reset)
         layout.addStretch()
-        layout.addWidget(label("Noiz V3\nElemento aislado", "muted", True))
+        layout.addWidget(label("Noiz V4", "muted"))
         return side
 
     def _construction(self) -> QWidget:
         widget = QFrame()
         widget.setObjectName("sheet")
-        widget.setMinimumWidth(260)
+        widget.setMinimumWidth(380)
         layout = QVBoxLayout(widget)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(7)
-        self.octave_table = QTableWidget(1, 7)
-        self.octave_table.setHorizontalHeaderLabels(["63", "125", "250", "500", "1k", "2k", "4k"])
-        self.octave_table.verticalHeader().hide()
-        self.octave_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.octave_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.octave_table.setFixedHeight(55)
-        self.octave_table.setToolTip("TL por octavas [dB]. Promedio energético de la transmisión de tres tercios de octava.")
-        layout.addWidget(self.octave_table)
-        layout.addWidget(label("Descripción de la composición", "sectionTitle"))
+        layout.setContentsMargins(4, 3, 4, 3)
+        layout.setSpacing(3)
+        layout.addLayout(self._header())
         self.description_label = label("", wrap=True)
-        self.description_label.setMaximumHeight(100)
+        self.description_label.setMaximumHeight(self.fontMetrics().height() * 3 + 4)
         layout.addWidget(self.description_label)
-        # Kept as an optional compact navigator; the material itself is edited in nested tabs.
+        # Optional accessibility navigator; editing lives in the nested tabs.
         self.composition_tree = QTreeWidget()
         self.composition_tree.setHeaderHidden(True)
         self.composition_tree.itemClicked.connect(self._tree_selected)
@@ -376,33 +418,20 @@ class MainWindow(QMainWindow):
         self.assembly_combo.addItems(TOPOLOGIES)
         self.assembly_combo.currentIndexChanged.connect(self._change_topology)
         self.assembly_combo.hide()
-        row = QHBoxLayout()
-        row.addWidget(label("Vista del elemento", "sectionTitle"), 1)
-        self.view_combo = QComboBox()
-        self.view_combo.addItems(["3D · rotar", "2D · corte"])
-        row.addWidget(self.view_combo)
-        layout.addLayout(row)
         self.section_view = SectionView()
-        self.view_combo.currentIndexChanged.connect(lambda index: self.section_view.set_exploded(index == 0))
         layout.addWidget(self.section_view, 1)
-        self.view_controls = QHBoxLayout()
-        self.view_controls.addWidget(label("Opacidad", "muted"))
-        self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
-        self.opacity_slider.setRange(10, 100)
-        self.opacity_slider.setValue(100)
-        self.opacity_slider.valueChanged.connect(self._opacity_changed)
-        self.view_controls.addWidget(self.opacity_slider, 1)
-        reset = QPushButton("Restablecer vista")
-        reset.clicked.connect(self._reset_view)
-        self.view_controls.addWidget(reset)
-        layout.addLayout(self.view_controls)
         self.physics_footer = label("fc — Hz · masa superficial — kg/m²", "sectionTitle", True)
         layout.addWidget(self.physics_footer)
-        self.composition_summary = label("", "muted", True)
-        layout.addWidget(self.composition_summary)
-        settings = QPushButton("Dimensiones y condiciones de cálculo…")
+        footer = QHBoxLayout()
+        footer.setSpacing(4)
+        self.composition_summary = label("", "muted")
+        footer.addWidget(self.composition_summary, 1)
+        footer.addWidget(self.thickness_value)
+        settings = QPushButton("Dimensiones…")
+        settings.setToolTip("Dimensiones y condiciones de cálculo")
         settings.clicked.connect(self.show_settings)
-        layout.addWidget(settings)
+        footer.addWidget(settings)
+        layout.addLayout(footer)
         return widget
 
     def _opacity_changed(self, value: int) -> None:
@@ -425,19 +454,19 @@ class MainWindow(QMainWindow):
         editor = QFrame()
         editor.setObjectName("sheet")
         editor.setMinimumWidth(540)
-        editor.setMinimumHeight(310)
+        editor.setMinimumHeight(280)
         layout = QVBoxLayout(editor)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(5)
+        layout.setContentsMargins(4, 3, 4, 3)
+        layout.setSpacing(2)
         self.topology_tabs = QTabBar()
         self.topology_tabs.setObjectName("topologyTabs")
-        self.topology_tabs.setExpanding(True)
+        self.topology_tabs.setExpanding(False)
         self.topology_tabs.setDrawBase(False)
         self.topology_tabs.currentChanged.connect(self._change_topology)
         layout.addWidget(self.topology_tabs)
         self.part_tabs = QTabBar()
         self.part_tabs.setObjectName("partTabs")
-        self.part_tabs.setExpanding(True)
+        self.part_tabs.setExpanding(False)
         self.part_tabs.setDrawBase(False)
         self.part_tabs.setUsesScrollButtons(True)
         self.part_tabs.currentChanged.connect(self._part_selected)
@@ -463,7 +492,9 @@ class MainWindow(QMainWindow):
             widget.validityChanged.connect(lambda error, key=name: self._extra_validity(key, error))
         self._extra_pages["floor_cover"] = self.editor_stack.addWidget(self._scroll(self._floor_editor()))
         layout.addWidget(self.editor_stack, 1)
-        self.message_label = label("Configura el elemento y pulsa Calcular", "status", True)
+        self.message_label = label("Configura el elemento y pulsa Calcular", "status")
+        self.message_label.setMinimumWidth(0)
+        self.message_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         layout.addWidget(self.message_label)
         controls = QHBoxLayout()
         self.library_label = label("", "muted")
@@ -481,6 +512,8 @@ class MainWindow(QMainWindow):
     def _excitation_changed(self) -> None:
         if not self._loading and self.excitation_combo.currentData():
             self._set_project_field("excitation", self.excitation_combo.currentData())
+            self._configure_rating_choices()
+            self._refresh_results()
 
     def _extra_validity(self, key: str, error: str) -> None:
         if self._loading:
@@ -536,51 +569,51 @@ class MainWindow(QMainWindow):
     def _panel_editor(self) -> QWidget:
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        layout.setContentsMargins(1, 3, 1, 1)
-        layout.setSpacing(6)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(2)
         self.layer_tabs = QTabBar()
         self.layer_tabs.setObjectName("layerTabs")
-        self.layer_tabs.setExpanding(True)
+        self.layer_tabs.setExpanding(False)
         for number in range(6):
             self.layer_tabs.addTab(f"Layer {number + 1}")
         self.layer_tabs.currentChanged.connect(self._select_layer_tab)
         layout.addWidget(self.layer_tabs)
-        row = QHBoxLayout()
-        self.layer_enabled = QCheckBox("Capa activa")
-        self.layer_enabled.toggled.connect(lambda value: self._set_layer_field("enabled", value))
-        row.addWidget(self.layer_enabled)
-        row.addStretch()
-        row.addWidget(label("Thickness", "muted"))
-        thickness = spin(.001, 5000, decimals=4)
-        thickness.setSuffix(" mm")
-        thickness.valueChanged.connect(lambda value: self._set_layer_field("thickness_mm", value))
-        self.layer_fields = {"thickness_mm": thickness}
-        row.addWidget(thickness)
-        row.addWidget(label("Quantity", "muted"))
-        self.count_spin = QSpinBox()
-        self.count_spin.setRange(1, 10)
-        self.count_spin.setKeyboardTracking(False)
-        self.count_spin.valueChanged.connect(lambda value: self._set_layer_field("count", value))
-        row.addWidget(self.count_spin)
-        layout.addLayout(row)
         self.material_picker = ProductPicker(self.entries, kind=("material", "glazing", "core"))
         self.material_picker.entrySelected.connect(self._select_material_entry)
         self.material_picker.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
-        self.material_picker.setMinimumHeight(180)
+        self.material_picker.setMinimumHeight(190)
+        controls = self.material_picker.search_row
+        self.layer_enabled = QCheckBox("Activa")
+        self.layer_enabled.setToolTip("Incluir esta capa en la composición y el cálculo")
+        self.layer_enabled.toggled.connect(lambda value: self._set_layer_field("enabled", value))
+        controls.addWidget(self.layer_enabled)
+        controls.addWidget(label("mm"))
+        thickness = spin(.001, 5000, decimals=4)
+        thickness.setMaximumWidth(104)
+        thickness.setAccessibleName("Thickness [mm]")
+        thickness.valueChanged.connect(lambda value: self._set_layer_field("thickness_mm", value))
+        self.layer_fields = {"thickness_mm": thickness}
+        controls.addWidget(thickness)
+        controls.addWidget(label("Qty"))
+        self.count_spin = QSpinBox()
+        self.count_spin.setRange(1, 10)
+        self.count_spin.setMaximumWidth(48)
+        self.count_spin.setKeyboardTracking(False)
+        self.count_spin.setAccessibleName("Cantidad de capas")
+        self.count_spin.valueChanged.connect(lambda value: self._set_layer_field("count", value))
+        controls.addWidget(self.count_spin)
         layout.addWidget(self.material_picker, 1)
-        material_row = QHBoxLayout()
+        self.layer_properties = QWidget()
+        advanced = QVBoxLayout(self.layer_properties)
+        advanced.setContentsMargins(0, 0, 0, 0)
+        advanced.setSpacing(2)
         self.layer_name_edit = QLineEdit()
         self.layer_name_edit.setAccessibleName("Nombre del material de la capa")
         self.layer_name_edit.textChanged.connect(lambda text: self._set_layer_field("name", text))
-        material_row.addWidget(self.layer_name_edit, 1)
-        self.properties_toggle = QPushButton("Propiedades ▾")
-        self.properties_toggle.setCheckable(True)
-        self.properties_toggle.toggled.connect(lambda visible: self.layer_properties.setVisible(visible))
-        material_row.addWidget(self.properties_toggle)
-        layout.addLayout(material_row)
-        self.layer_properties = QWidget()
-        grid = QGridLayout(self.layer_properties)
+        advanced.addWidget(self.layer_name_edit)
+        grid = QGridLayout()
         grid.setContentsMargins(0, 0, 0, 0)
+        grid.setSpacing(2)
         for index, (title, key, low, high, precision, factor) in enumerate([
             ("Densidad [kg/m³]", "density_kg_m3", .001, 100000, 3, 1),
             ("Young [GPa]", "young_modulus_pa", .000001, 10000, 6, 1e9),
@@ -593,33 +626,45 @@ class MainWindow(QMainWindow):
             self.layer_fields[key] = field
             grid.addWidget(label(title, "muted"), 0, index)
             grid.addWidget(field, 1, index)
+        advanced.addLayout(grid)
+        self.source_label = label("", "muted", True)
+        advanced.addWidget(self.source_label)
         self.layer_properties.hide()
         layout.addWidget(self.layer_properties)
-        self.source_label = label("", "muted", True)
-        layout.addWidget(self.source_label)
         buttons = QHBoxLayout()
+        buttons.setSpacing(2)
         self.layer_buttons = {}
         for title, key, slot in (("+ Capa", "add", self.add_layer), ("Duplicar", "duplicate", self.duplicate_layer),
                                  ("Vaciar", "remove", self.remove_layer), ("←", "up", lambda: self.move_layer(-1)),
                                  ("→", "down", lambda: self.move_layer(1))):
             button = QPushButton(title)
+            button.setMaximumWidth(max(30, button.fontMetrics().horizontalAdvance(title) + 22))
             button.clicked.connect(slot)
             buttons.addWidget(button)
             self.layer_buttons[key] = button
+        buttons.addStretch(1)
+        self.properties_toggle = QPushButton("Propiedades ▸")
+        self.properties_toggle.setCheckable(True)
+        self.properties_toggle.toggled.connect(self._toggle_layer_properties)
+        buttons.addWidget(self.properties_toggle)
         profile = QPushButton("Perfil…")
+        profile.setMaximumWidth(profile.fontMetrics().horizontalAdvance("Perfil…") + 22)
         profile.clicked.connect(self.select_profile)
         buttons.addWidget(profile)
         self.clear_profile_button = QPushButton("Quitar perfil")
         self.clear_profile_button.clicked.connect(lambda: (self._set_layer_field("profile", None), self._show_layer()))
-        buttons.addWidget(self.clear_profile_button)
+        advanced.addWidget(self.clear_profile_button, alignment=Qt.AlignmentFlag.AlignRight)
         self.profile_label = label("", "muted")
         self.profile_label.hide()
         layout.addLayout(buttons)
-        # Compatibility/accessibility table is not part of the visual hierarchy.
         self.layer_table = table(["Capa", "N.º", "mm", "kg/m²"])
         self.layer_table.itemSelectionChanged.connect(self._layer_selected)
         self.layer_table.hide()
         return widget
+
+    def _toggle_layer_properties(self, visible: bool) -> None:
+        self.layer_properties.setVisible(visible)
+        self.properties_toggle.setText("Propiedades ▾" if visible else "Propiedades ▸")
 
     def _select_layer_tab(self, index: int) -> None:
         if self._loading or index < 0:
@@ -648,65 +693,86 @@ class MainWindow(QMainWindow):
     def _cavity_editor(self) -> QWidget:
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        layout.setContentsMargins(1, 3, 1, 1)
-        layout.setSpacing(5)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(2)
         self.cavity_fields = {}
-        controls = QGridLayout()
+        controls = QHBoxLayout()
+        controls.setSpacing(3)
         self.frame_combo = QComboBox()
         for title, key in (("Paneles independientes", "independent"), ("Timber stud", "timber"), ("Steel stud", "steel")):
             self.frame_combo.addItem(title, key)
         self.frame_combo.currentIndexChanged.connect(lambda: self._set_cavity_field("frame_type", self.frame_combo.currentData()))
-        controls.addWidget(self.frame_combo, 0, 0, 1, 2)
+        controls.addWidget(self.frame_combo, 1)
         self.gas_combo = QComboBox()
         for title, gas in (("Air", "air"), ("Argon", "argon"), ("Krypton", "krypton"), ("Xenon", "xenon")):
             self.gas_combo.addItem(title, gas)
         self.gas_combo.currentIndexChanged.connect(lambda: self._set_cavity_field("gas", self.gas_combo.currentData()))
-        controls.addWidget(self.gas_combo, 0, 2, 1, 2)
-        for index, (title, key) in enumerate((("Cavity width [mm]", "depth_mm"), ("Stud width [mm]", "stud_width_mm"),
-                                            ("Stud depth [mm]", "stud_depth_mm"), ("Stud spacing [mm]", "stud_spacing_mm"))):
+        controls.addWidget(self.gas_combo)
+        for title, key in (("Cámara mm", "depth_mm"), ("Separación mm", "stud_spacing_mm")):
             field = spin(.01, 10000, decimals=3)
+            field.setMaximumWidth(100)
+            field.setAccessibleName(title)
             field.valueChanged.connect(lambda value, k=key: self._set_cavity_field(k, value))
             self.cavity_fields[key] = field
-            controls.addWidget(label(title, "muted"), 1, index)
-            controls.addWidget(field, 2, index)
+            controls.addWidget(label(title))
+            controls.addWidget(field)
         layout.addLayout(controls)
+        dimensions = QHBoxLayout()
+        dimensions.setSpacing(3)
+        for title, key in (("Stud ancho mm", "stud_width_mm"), ("Stud fondo mm", "stud_depth_mm")):
+            field = spin(.01, 10000, decimals=3)
+            field.setMaximumWidth(100)
+            field.setAccessibleName(title)
+            field.valueChanged.connect(lambda value, k=key: self._set_cavity_field(k, value))
+            self.cavity_fields[key] = field
+            dimensions.addWidget(label(title))
+            dimensions.addWidget(field)
+        dimensions.addStretch(1)
+        layout.addLayout(dimensions)
         self.stud_picker = ProductPicker(self.entries, kind="stud")
         self.stud_picker.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
-        self.stud_picker.setMinimumHeight(140)
+        self.stud_picker.setMinimumHeight(95)
+        self.stud_picker.count_label.hide()
         for listing in (self.stud_picker.products_list, self.stud_picker.category_list, self.stud_picker.manufacturer_list):
-            listing.setMinimumHeight(60)
+            listing.setMinimumHeight(45)
         self.stud_picker.entrySelected.connect(self._select_stud_entry)
         layout.addWidget(self.stud_picker, 1)
-        self.frame_note = label("", "muted", True)
+        self.frame_note = label("", "muted")
+        self.frame_note.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         layout.addWidget(self.frame_note)
-        row = QHBoxLayout()
-        self.absorber_label = label("Infill products", "sectionTitle")
-        row.addWidget(self.absorber_label, 1)
-        row.addWidget(label("Thickness [mm]", "muted"))
-        self.absorber_spin = spin(0, 10000, decimals=3)
-        self.absorber_spin.valueChanged.connect(lambda value: self._set_cavity_field("absorber_thickness_mm", value))
-        row.addWidget(self.absorber_spin)
-        row.addWidget(label("Quantity", "muted"))
-        self.absorber_count_spin = QSpinBox()
-        self.absorber_count_spin.setRange(0, 10)
-        self.absorber_count_spin.setValue(1)
-        self.absorber_count_spin.valueChanged.connect(lambda value: self._set_cavity_field("absorber_count", value))
-        row.addWidget(self.absorber_count_spin)
-        layout.addLayout(row)
         self.absorber_picker = ProductPicker(self.entries, kind="absorption")
         self.absorber_picker.entrySelected.connect(self._select_absorber_entry)
         self.absorber_picker.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
-        self.absorber_picker.setMinimumHeight(140)
+        self.absorber_picker.setMinimumHeight(95)
+        self.absorber_picker.count_label.hide()
         for listing in (self.absorber_picker.products_list, self.absorber_picker.category_list, self.absorber_picker.manufacturer_list):
-            listing.setMinimumHeight(60)
+            listing.setMinimumHeight(45)
+        row = self.absorber_picker.search_row
+        self.absorber_label = label("Infill", "sectionTitle")
+        row.insertWidget(0, self.absorber_label)
+        row.addWidget(label("mm"))
+        self.absorber_spin = spin(0, 10000, decimals=3)
+        self.absorber_spin.setMaximumWidth(100)
+        self.absorber_spin.setAccessibleName("Espesor del absorbente [mm]")
+        self.absorber_spin.valueChanged.connect(lambda value: self._set_cavity_field("absorber_thickness_mm", value))
+        row.addWidget(self.absorber_spin)
+        row.addWidget(label("Qty"))
+        self.absorber_count_spin = QSpinBox()
+        self.absorber_count_spin.setRange(0, 10)
+        self.absorber_count_spin.setValue(1)
+        self.absorber_count_spin.setMaximumWidth(48)
+        self.absorber_count_spin.valueChanged.connect(lambda value: self._set_cavity_field("absorber_count", value))
+        row.addWidget(self.absorber_count_spin)
         layout.addWidget(self.absorber_picker, 1)
         sigma = QHBoxLayout()
+        sigma.setSpacing(3)
         sigma.addWidget(label("Resistividad σ [Pa·s/m²]", "muted"))
         self.resistivity_spin = spin(0, 1e8, decimals=2)
+        self.resistivity_spin.setMaximumWidth(120)
         self.resistivity_spin.setSpecialValueText("Sin dato")
         self.resistivity_spin.valueChanged.connect(lambda value: self._set_cavity_field("flow_resistivity_pa_s_m2", value or None))
         sigma.addWidget(self.resistivity_spin)
-        sigma.addWidget(label("Dato explícito; cantidad 0 excluye el relleno.", "muted", True), 1)
+        sigma.addWidget(label("Qty 0 excluye el relleno.", "muted"), 1)
         layout.addLayout(sigma)
         return widget
 
@@ -848,6 +914,7 @@ class MainWindow(QMainWindow):
         self._set_title()
         self.message_label.setObjectName("status")
         self.message_label.setText("Cambios pendientes de cálculo" if changed else "Placas isotrópicas + cámaras · predicción preliminar")
+        self.message_label.setToolTip(self.message_label.text())
         self.message_label.setStyleSheet("")
         if self._input_error:
             self._error(self._input_error)
@@ -924,7 +991,8 @@ class MainWindow(QMainWindow):
     def _error(self, text: str) -> None:
         self.message_label.setText(text)
         self.message_label.setObjectName("error")
-        self.message_label.setStyleSheet("color: #a52b37; background: #fff0f0; border: 1px solid #ebc6cb; padding: 5px;")
+        self.message_label.setToolTip(text)
+        self.message_label.setStyleSheet("color: #a52b37; background: #fff0f0;")
         self.statusBar().showMessage(text)
 
     def _refresh_summary(self) -> None:
@@ -1058,6 +1126,7 @@ class MainWindow(QMainWindow):
             self.excitation_combo.addItem("Lluvia · modelo pendiente", "rainfall")
         self.excitation_combo.setCurrentIndex(self.excitation_combo.findData(project.excitation))
         self.excitation_combo.setVisible(kind in ("floor", "roof"))
+        self._configure_rating_choices()
         self._loading = False
         self._part_selected(self.part_tabs.currentIndex())
         self._refresh_summary()
@@ -1170,7 +1239,7 @@ class MainWindow(QMainWindow):
         self.absorber_picker.select_entry(cavity.absorber.id if cavity.absorber else None)
         display_value(self.absorber_spin, cavity.absorber_thickness_mm)
         display_value(self.resistivity_spin, cavity.flow_resistivity_pa_s_m2 or 0)
-        self.absorber_label.setText("Infill products")
+        self.absorber_label.setText("Infill")
         self._loading = False
         self._refresh_cavity_note()
 
@@ -1178,7 +1247,8 @@ class MainWindow(QMainWindow):
         cavity = self.project.cavities[self._selected_cavity]
         independent = cavity.frame_type == "independent"
         self.frame_note.setText("Sin puentes estructurales entre paneles." if independent else
-                                "Montantes: configuración y vista disponibles; el cálculo requiere un modelo de acoplamiento estructural.")
+                                "Montantes: modelo de acoplamiento estructural pendiente.")
+        self.frame_note.setToolTip(self.frame_note.text())
         self.resistivity_spin.setEnabled(cavity.absorber_count > 0)
 
     def _change_topology(self, index: int) -> None:
@@ -1449,19 +1519,67 @@ class MainWindow(QMainWindow):
         self._refresh_results()
         self.statusBar().showMessage("Cálculo completado. Puedes guardar este resultado en Comparación.")
 
+    def _configure_rating_choices(self) -> None:
+        previous = self.rating_combo.currentData()
+        self.rating_combo.blockSignals(True)
+        self.rating_combo.clear()
+        choices = (("IIC", "iic"), ("Ln,w", "lnw")) if self.project.excitation == "impact" else (
+            (("LA", "rainfall"),) if self.project.excitation == "rainfall" else (("Rw", "rw"), ("STC", "stc")))
+        for title, key in choices:
+            self.rating_combo.addItem(title, key)
+        index = self.rating_combo.findData(previous)
+        self.rating_combo.setCurrentIndex(max(0, index))
+        self.rating_combo.blockSignals(False)
+
+    def _rating_changed(self) -> None:
+        if not self._loading and hasattr(self, "plot_item"):
+            self._refresh_results()
+
+    def _selected_rating(self, prediction: AssemblyPrediction | None) -> int | None:
+        if prediction is None:
+            return None
+        key = self.rating_combo.currentData()
+        return prediction.rw_db if key == "rw" else (prediction.stc_db if key == "stc" else None)
+
+    def _refresh_rating(self) -> None:
+        key = self.rating_combo.currentData()
+        value = self._selected_rating(self.current_result)
+        unit = " dB" if key in ("rw", "lnw") else (" dBA" if key == "rainfall" else "")
+        unavailable = self.current_result is not None and value is None and key in ("rw", "stc")
+        self.rw_value.setText("N/A" if unavailable else ("—" if value is None else str(value)) + unit)
+        if key in ("iic", "lnw"):
+            detail = "Impacto: modelo pendiente"
+            tooltip = ("IIC y Ln,w requieren un espectro de impacto que aún no se predice. "
+                       "L’nT,w corresponde a recintos y depende del tiempo de reverberación; "
+                       "no equivale a Ln,w de un elemento.")
+        elif key == "rainfall":
+            detail, tooltip = "Lluvia: modelo pendiente", "La predicción de ruido de lluvia todavía no está implementada."
+        elif key == "stc":
+            detail = "STC orientativo · 32/8"
+            tooltip = "STC orientativo · método legado 32/8, 125–4000 Hz. No afirma conformidad con ASTM E413-16 o posterior."
+        else:
+            detail = "Predicción preliminar"
+            tooltip = "Rw de la predicción en campo difuso; no equivale a un ensayo de laboratorio."
+        if self.current_result is not None and value is None and key in ("rw", "stc"):
+            detail = "No aplicable al espectro"
+        self.rating_detail.setText(detail)
+        self.rating_detail.setToolTip(tooltip)
+        self.rating_combo.setToolTip(tooltip)
+
     def _refresh_results(self) -> None:
         self.plot_item.clear()
         self.legend.clear()
         self.traces = []
-        self.rw_value.setText("— dB" if self.current_result is None else
-                              ("N/A" if self.current_result.rw_db is None else f"{self.current_result.rw_db} dB"))
+        self._refresh_rating()
         result = self.current_result
         for index in range(7):
             self.octave_table.setItem(0, index, cell("—"))
+            self.octave_table.item(0, index).setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         if result:
             try:
                 for index, (_, value) in enumerate(octave_summary(result)):
                     self.octave_table.setItem(0, index, cell(f"{value:.1f}"))
+                    self.octave_table.item(0, index).setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             except ValueError:
                 # A partial imported/comparison spectrum cannot claim a full octave summary.
                 pass
@@ -1492,11 +1610,12 @@ class MainWindow(QMainWindow):
         if plotted:
             values = [level for prediction, _, _, _ in plotted for level in prediction.tl_db]
             self.plot_item.setYRange(min(0, min(values) - 5), max(30, max(values) + 5), padding=.02)
+        self.comparison_table.horizontalHeaderItem(4).setText(self.rating_combo.currentText())
         self.comparison_table.setRowCount(len(self.predictions))
         for row, prediction in enumerate(self.predictions):
             for col, value in enumerate((prediction.project.name, len(prediction.project.panels),
                                          f"{prediction.total_thickness_mm:g}", f"{prediction.total_mass_kg_m2:.1f}",
-                                         "—" if prediction.rw_db is None else str(prediction.rw_db))):
+                                         "—" if self._selected_rating(prediction) is None else str(self._selected_rating(prediction)))):
                 self.comparison_table.setItem(row, col, cell(value))
         self.result_tabs.setTabText(2, f"Comparación · {len(self.predictions)}/6")
         self.add_comparison_button.setEnabled(result is not None and len(self.predictions) < 6)
@@ -1533,8 +1652,8 @@ class MainWindow(QMainWindow):
         self.results_panel.show()
         self.results_action.setChecked(True)
         self.toggle_results_button.setText("Ocultar gráfica")
-        self.main_splitter.setSizes([430, 920])
-        self.right_splitter.setSizes([620, 190])
+        self.main_splitter.setSizes([450, 820])
+        self.right_splitter.setSizes([500, 180])
 
     def _editor_has_changes(self) -> bool:
         return (bool(self._input_error) or self.project != self._saved_project
@@ -1679,7 +1798,8 @@ class MainWindow(QMainWindow):
             "Los paneles deben ser estructuralmente independientes. Los montantes, perfiles especiales y materiales "
             "anisótropos requieren modelos adicionales; no deben interpretarse como un sistema validado. "
             "El modelo poroso Miki necesita resistividad al flujo, no el campo Damping de un XML.\n\n"
-            "Rw se calcula únicamente para incidencia difusa. Es una clasificación de una predicción preliminar, "
+            "Rw y STC se calculan únicamente para incidencia difusa. STC usa el método legado 32/8 y es orientativo. "
+            "Es una clasificación de una predicción preliminar, "
             "no un valor certificado por ensayo. No se calculan IIC, Ln,w ni ruido de lluvia. No se incluye flanking "
             "ni aislamiento entre recintos. Las dimensiones finitas son descriptivas.\n\n"
             "PROCEDENCIA\nLas propiedades importadas conservan archivo, identificador y SHA-256. "
@@ -1699,7 +1819,7 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def about(self) -> None:
-        QMessageBox.about(self, "Noiz Transmission", "Noiz Transmission · Workbench V3\nDiseño acústico de elementos constructivos.\nCódigo abierto · MIT\nModelos preliminares con procedencia explícita.")
+        QMessageBox.about(self, "Noiz Transmission", "Noiz Transmission · V4\nDiseño acústico de elementos constructivos.\nCódigo abierto · MIT\nModelos preliminares con procedencia explícita.")
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if self._confirm_discard():
@@ -1717,7 +1837,7 @@ def run() -> int:
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("Noiz Transmission")
     app.setOrganizationName("Noiz Transmission")
-    app.setFont(QFont("Segoe UI", 10))
+    app.setFont(QFont("Segoe UI", 9))
     window = MainWindow()
     window.show()
     return app.exec()

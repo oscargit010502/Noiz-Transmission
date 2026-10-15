@@ -4,17 +4,18 @@ Aplicación open source de escritorio para estudiar el aislamiento acústico de
 **elementos constructivos**, con motor físico independiente, materiales con
 procedencia y resultados reproducibles. Python, PySide6, NumPy, SciPy y PyQtGraph.
 
-**Versión 0.3.0 · prototipo científico.** La V3 reorganiza el trabajo mediante
-controles anidados, incorpora cuatro hojas y tres cámaras y permite guardar las
-variantes de un proyecto. La exactitud respecto a sistemas comerciales todavía
+**Versión 0.4.0 · prototipo científico.** La V4 prioriza el espacio vertical:
+controles Qt nativos compactos, listas más altas, tabla de octavas completa y
+selector Rw/STC. La vista incorpora perspectiva, un corte 2D estrecho y perfiles
+abiertos para distinguir los montantes del relleno. La exactitud respecto a sistemas comerciales todavía
 requiere validación experimental; los resultados no equivalen a un ensayo.
 
-![Editor V3 con un proyecto sintético calculado](docs/images/workbench-v3.png)
+![Editor V4 con controles compactos y un proyecto sintético calculado](docs/images/workbench-v4.png)
 
 ## Descargar y abrir
 
-El código V3 está en la rama
-[`codex/noiz-transmission-v3`](https://github.com/oscargit010502/Noiz-Transmission/tree/codex/noiz-transmission-v3).
+El código V4 está en la rama
+[`codex/noiz-transmission-v4`](https://github.com/oscargit010502/Noiz-Transmission/tree/codex/noiz-transmission-v4).
 Selecciona esa rama y usa **Code → Download ZIP**, o descarga el paquete de esta
 conversación. Extrae el ZIP, instala [uv](https://docs.astral.sh/uv/getting-started/installation/)
 y ejecuta **`INICIAR_NOIZ.cmd`** en Windows. Desde la carpeta del proyecto:
@@ -28,7 +29,24 @@ La primera ejecución descarga Python 3.13 y dependencias si faltan. La
 [guía de Windows](PROBAR_EN_WINDOWS.md) explica cómo probar cada control y dónde
 están las carpetas. Esta entrega contiene código y lanzador; no un instalador `.exe`.
 
-## Controles de V3
+## Cambios de apariencia en V4
+
+- Menú y barra de herramientas compactos; sin una cabecera grande a todo ancho.
+  Tabla e índice de clasificación comparten el resumen de la izquierda.
+- Búsqueda, espesor y cantidad en una sola fila; propiedades adicionales plegables.
+  A 1366×768, Single muestra 19 productos completos con los ajustes predeterminados.
+- Entradas, pestañas y flechas nativas de Qt. Clics de incremento/decremento
+  verificados en estilos Windows y Fusion, junto con edición por teclado.
+- Tabla de octavas dimensionada con las métricas de fuente, conservando visibles
+  encabezados y valores con escalas de pantalla de 100%, 125% y 150%.
+- Cámara en perspectiva, arrastre en el sentido del cursor, vista parcial para
+  exponer la cavidad y sección 2D vertical para paredes.
+- Montantes metálicos abiertos y perfiles ondulados/trapezoidales según los datos
+  geométricos disponibles. La representación no implementa un modelo de unión.
+- Selector **Rw / STC**, con clasificación independiente de cada índice. IIC y
+  Ln,w permanecen sin valor porque la predicción de impacto sigue pendiente.
+
+## Controles del elemento
 
 - **Wall y Ceiling:** Single / Double / Triple / Quad; Panel y Frame intercalados,
   Facing en Single y Leak. Quad tiene cuatro paneles y tres Frames interiores.
@@ -50,7 +68,7 @@ están las carpetas. Esta entrega contiene código y lanzador; no un instalador 
 
 ## Qué calcula y qué queda pendiente
 
-| Función | Estado en V3 |
+| Función | Estado en V4 |
 | --- | --- |
 | Transmisión aérea de 1–4 hojas isotrópicas independientes | Matrices de transferencia, flexión y amortiguamiento |
 | Cámaras de aire y absorbente poroso | Modelo Miki, con resistividad explícita |
@@ -60,7 +78,7 @@ están las carpetas. Esta entrega contiene código y lanzador; no un instalador 
 | Gomperts / Mechel, uniones por montantes | Controles y datos conservados; cálculo bloqueado por modelo pendiente |
 | Impacto Ln,w/IIC y ruido de lluvia | Controles disponibles; predicción pendiente |
 | Floor Covering medido | Consulta de ΔL declarado en catálogo; no calcula el Ln del suelo completo |
-| Rw | Clasificación provisional de la curva difusa; sin clasificación en incidencia normal |
+| Rw / STC | Clasificaciones provisionales de la curva difusa; STC utiliza el procedimiento legado 32/8, identificado en informes; sin clasificación en incidencia normal |
 
 No se calcula aislamiento entre recintos, flancos ni uniones de ISO 12354.
 Las hojas son infinitas y las capas de una hoja comparten movimiento, con suma
@@ -83,7 +101,7 @@ registro no demuestra su validez experimental ni su compatibilidad con el motor.
 El `Damping` de absorbentes no se convierte automáticamente en resistividad.
 
 La distribución pública incluye ejemplos sintéticos. El paquete personal guarda
-el catálogo convertido en `local_data/catalog-v3.json`, excluido de Git y del
+el catálogo compatible con V3 convertido en `local_data/catalog-v3.json`, excluido de Git y del
 paquete Python. También se reconoce `local_data/catalog.json` de V2; V3 tiene
 preferencia si ambos existen. `NOIZ_CATALOG_PATH` permite elegir otra ruta. Sin
 catálogo local se usa el almacenamiento del usuario y se ofrecen ejemplos
@@ -124,7 +142,8 @@ La CI configura Windows y Linux; su definición no sustituye una ejecución nati
 verificada. Phonometry se instala como extra para contrastes independientes.
 
 - [Arquitectura](docs/architecture.md) y [hoja de ruta](docs/roadmap.md)
-- [Entrega V3 y comprobaciones realizadas](docs/release-v3.md)
+- [Entrega V4 y comprobaciones realizadas](docs/release-v4.md) y [criterios Rw/STC](docs/v4-ratings.md)
+- [Entrega V3 anterior](docs/release-v3.md)
 - [Validación](docs/validation.md), [fuentes](docs/sources.md) y [revisión INSUL 10/XML](docs/v3-reference-review.md)
 - [Materiales](docs/materials.md), [reproducibilidad](docs/reproducibility.md) y [contribuciones](CONTRIBUTING.md)
 

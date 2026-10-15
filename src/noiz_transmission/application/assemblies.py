@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 
 from noiz_transmission.application.materials import finite_number, nonempty_string
 from noiz_transmission.catalog import CatalogEntry, entry_from_dict, entry_to_dict
+from noiz_transmission.core.ratings import legacy_stc
 
 ELEMENT_TYPES = frozenset({"wall", "ceiling", "floor", "roof", "glazing", "door", "porous"})
 ELEMENT_PANEL_LIMITS = {"wall": 4, "ceiling": 4, "floor": 3, "roof": 2,
@@ -292,3 +293,16 @@ class AssemblyPrediction:
     resonance_frequencies_hz: tuple[float, ...]
     warnings: tuple[str, ...]
     model_name: str = "transfer-matrix-plate-1"
+
+    @property
+    def stc_db(self) -> int | None:
+        """Indicative legacy 32/8 STC, calculated from TL independently of Rw.
+
+        This computed property keeps old result constructors and project
+        schema 3 compatible. STC is a classification number, not a dB unit;
+        the suffix follows the existing ``rw_db`` API convention only.
+        Neither normal-incidence TL nor an impact spectrum yields STC here.
+        """
+        if self.project.incidence != "diffuse" or self.project.excitation != "airborne":
+            return None
+        return legacy_stc(self.frequencies_hz, self.tl_db).stc

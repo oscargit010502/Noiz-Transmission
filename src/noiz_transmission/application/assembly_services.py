@@ -41,7 +41,7 @@ from noiz_transmission.application.materials import (
 )
 from noiz_transmission.application.services import Project, load_project
 from noiz_transmission.catalog import CatalogEntry, entry_from_dict, entry_to_dict
-from noiz_transmission.core.ratings import ISO717_FREQUENCIES_HZ, iso717_rw
+from noiz_transmission.core.ratings import ISO717_FREQUENCIES_HZ, STC_PROCEDURE, iso717_rw
 from noiz_transmission.core.transfer import (
     MODEL_ID,
     NOMINAL_BANDS_HZ,
@@ -374,8 +374,12 @@ def predict_assembly(project: AssemblyProject, *, cancel_event: Event | None = N
         warnings.append("Rw orientativo calculado con 100–3150 Hz mediante ISO 717-1; "
                         "procedimiento provisional pendiente de revisión normativa. "
                         "No constituye un ensayo ni una certificación.")
+        warnings.append("STC orientativo: procedimiento legado 32/8, 125–4000 Hz, "
+                        "TL redondeado a dB enteros (mitades alejadas de cero). "
+                        "No declara conformidad con una edición de ASTM E413; "
+                        "no constituye un ensayo ni una certificación.")
     else:
-        warnings.append("Incidencia normal: no se asigna Rw a esta curva.")
+        warnings.append("Incidencia normal: no se asigna Rw ni STC a esta curva.")
     if not porous_mode:
         warnings.extend(_source_warnings(project))
     critical = tuple(project.sound_speed_m_s**2 / (2 * math.pi)
@@ -736,6 +740,8 @@ def _metadata(item: AssemblyPrediction, index: int) -> dict[str, Any]:
         "prediction_index": index, "project_name": item.project.name, "model_name": item.model_name,
         "total_mass_kg_m2": item.total_mass_kg_m2, "total_thickness_mm": item.total_thickness_mm,
         "rw_db_illustrative": item.rw_db,
+        "stc_illustrative": item.stc_db,
+        "stc_procedure": STC_PROCEDURE if item.stc_db is not None else None,
         "critical_frequencies_hz": json.dumps(item.critical_frequencies_hz, allow_nan=False),
         "resonance_frequencies_hz": json.dumps(item.resonance_frequencies_hz, allow_nan=False),
         "project_json": json.dumps(project_to_dict(item.project), ensure_ascii=False, allow_nan=False),
@@ -785,9 +791,11 @@ def export_assembly_html(predictions: Sequence[AssemblyPrediction], path: str | 
     for index, item in enumerate(items, 1):
         parts.append(f"<section><h2>{index}. {escape(item.project.name)}</h2>")
         rw = "No aplicable" if item.rw_db is None else f"{item.rw_db} dB (orientativo)"
+        stc = ("No aplicable" if item.stc_db is None else
+               f"{item.stc_db} (orientativo; legado 32/8, TL redondeado a dB enteros)")
         mass = ("Masa porosa: no inferida" if item.project.element_type == "porous" else
                 f"Masa de hojas: {item.total_mass_kg_m2:g} kg/m²")
-        parts.append(f"<p>Rw: {rw} · {mass} · "
+        parts.append(f"<p>Rw: {rw} · STC: {stc} · {mass} · "
                      f"Espesor total: {item.total_thickness_mm:g} mm</p>")
         parts.append(f"<p>{escape(describe_assembly(item.project))}</p>")
         parts.append("<table><thead><tr><th>Panel / capa</th><th>Producto</th><th>Cantidad</th>"

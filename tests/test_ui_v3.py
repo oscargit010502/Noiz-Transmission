@@ -11,7 +11,7 @@ import pytest
 pytest.importorskip("PySide6")
 pytest.importorskip("pyqtgraph")
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QDialog, QFileDialog
 
@@ -39,6 +39,8 @@ def window(app, monkeypatch, tmp_path):
     instance._field_errors.clear()
     instance._comparison_dirty = False
     instance.close()
+    instance.deleteLater()
+    app.sendPostedEvents(instance, QEvent.Type.DeferredDelete)
     app.processEvents()
 
 

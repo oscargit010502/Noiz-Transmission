@@ -2,7 +2,7 @@
 
 Se distinguen tres afirmaciones: **el código resuelve las ecuaciones**, **las
 ecuaciones representan el sistema físico** y **la clasificación cumple una norma
-concreta**. Una no demuestra las otras. V3 (0.3.0) cuenta con verificación matemática y
+concreta**. Una no demuestra las otras. V4 (0.4.0) cuenta con verificación matemática y
 contraste algorítmico; todavía no tiene un intervalo de error experimental para
 sistemas comerciales.
 
@@ -113,8 +113,10 @@ se realiza después de ese promedio energético. La curva de incidencia normal n
 recibe Rw en el servicio. V1 conserva su evaluación por centros nominales y se
 identifica por separado para evitar comparaciones de procedimientos diferentes.
 
-C/Ctr, STC e índices de impacto requieren verificaciones propias antes de
-incorporarse. Las afirmaciones `Rw ±3 dB`, `Ln,w ±5 dB` y lluvia `±5 dBA` del
+V4 verifica por separado el procedimiento STC legado 32/8: contorno, bandas,
+redondeo, déficits individuales y sumados, muescas, casos frontera y contraste
+independiente; [v4-ratings.md](v4-ratings.md) explica su alcance provisional.
+C/Ctr e índices de impacto requieren verificaciones propias antes de incorporarse. Las afirmaciones `Rw ±3 dB`, `Ln,w ±5 dB` y lluvia `±5 dBA` del
 About de INSUL no son incertidumbres aplicables a Noiz. No se traslada a ISO 717 una regla particular de STC.
 
 ## Registro de una ejecución
@@ -124,3 +126,8 @@ concreto debe guardar versión del código, plataforma, entradas, condiciones,
 curvas, advertencias, tolerancias y resultados de pruebas. Los recuentos y
 resultados de una ejecución pertenecen a sus logs/CI; esta página describe el
 protocolo y no sustituye esos registros.
+
+La revisión de GUI V4 comprueba además clics reales en las flechas de incremento
+y decremento, valores del modelo tras esos clics, filas completas y listas
+accesibles con escalas de 100%, 125% y 150%. Las pruebas de perspectiva y
+representación geométrica se distinguen de la validación acústica.
