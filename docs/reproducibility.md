@@ -1,6 +1,6 @@
 # Reproducción del entorno y los resultados
 
-## Instalación y escritorio V5 (0.5.0)
+## Instalación y escritorio V5 (0.5.1)
 
 Se requiere Python 3.13 o 3.14 y `uv`. `pyproject.toml` define extras y `uv.lock`
 fija versiones y hashes. Desde PowerShell, en el checkout:
@@ -101,15 +101,16 @@ uv run --locked noiz catalog import "C:\mis-materiales\Insul Materials.xml" "C:\
 uv run --locked --extra desktop noiz-transmission
 ```
 
-V5 admite ocho familias, incluidas Connections. El catálogo personal preparado
-con los ocho XML de esta entrega contiene 3.629 registros. Sin la variable
+V5 admite ocho familias, incluidas Connections. Desde 0.5.1 los ocho XML están
+convertidos en una base integrada de 3.629 registros. Sin la variable
 anterior, la búsqueda portátil prioriza `catalog-v5.json`, después
-`catalog-v3.json` y finalmente `catalog.json`. Cambiar de catálogo no reescribe
+`catalog-v3.json` y finalmente `catalog.json`, combinándolos con la base integrada.
+Definir `NOIZ_CATALOG_PATH` selecciona una biblioteca aislada. Cambiar de catálogo no reescribe
 las copias de registros contenidas en los proyectos guardados.
 
-`local_data/` está excluido de Git. Los XML y datos comerciales importados no se
-incluyen en la distribución pública. Un archivo privado de trabajo puede contener
-la biblioteca del usuario; debe distinguirse del paquete público de fuentes.
+`local_data/` está excluido de Git. La base convertida se distribuye en
+`src/noiz_transmission/data/catalog/`, con manifiesto y atribución independiente
+de la licencia MIT del código. Las modificaciones locales no se publican.
 
 ## Compatibilidad con V1 y V2
 

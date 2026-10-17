@@ -30,6 +30,7 @@ from noiz_transmission.application.services import (
 from noiz_transmission.catalog import (
     default_catalog_path,
     import_xml,
+    load_application_catalog,
     load_catalog,
     merge_catalog,
     save_catalog,
@@ -144,7 +145,7 @@ def _publish_assembly(predictions, output: Path, result_json: str) -> None:
 def _catalog(args: argparse.Namespace) -> int:
     if args.catalog_command == "list":
         path = args.input or default_catalog_path()
-        entries = load_catalog(path)
+        entries = load_catalog(path) if args.input else load_application_catalog()
         print(json.dumps({
             "path": str(path), "entry_count": len(entries),
             "kinds": dict(sorted(Counter(entry.kind for entry in entries).items())),

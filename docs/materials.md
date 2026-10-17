@@ -1,7 +1,8 @@
 # Catálogo internacional y procedencia
 
-El catálogo objetivo es **internacional**. El proyecto público distribuye tres
-materiales sintéticos y un absorbente de ejemplo para reproducir el editor.
+El catálogo objetivo es **internacional**. Desde 0.5.1 el programa distribuye los
+3.629 registros aportados como base integrada, además de conservar los ejemplos
+sintéticos para reproducir cálculos. No requiere importar XML al empezar.
 Desde V3 se pueden importar bibliotecas XML del usuario y consultarlas por familia,
 texto, categoría, fabricante y región, conservando su procedencia. V5 incorpora
 una octava familia: **Connections**, sistemas de conexión y montaje. Importar no significa validar
@@ -98,7 +99,8 @@ exceden límites de tamaño o complejidad. No se modifica silenciosamente un nú
 
 ## Biblioteca local y publicación
 
-La selección de archivo de biblioteca sigue este orden:
+La base integrada se combina con el archivo local. Una selección explícita mediante
+`NOIZ_CATALOG_PATH` aísla la biblioteca y excluye la base. La ruta local sigue este orden:
 
 1. La variable `NOIZ_CATALOG_PATH`, si está definida.
 2. En `local_data/` del directorio de ejecución: el primer archivo existente
@@ -109,11 +111,11 @@ La selección de archivo de biblioteca sigue este orden:
    en Windows o `$XDG_DATA_HOME/noiz-transmission/catalog.json` en Linux, con el
    valor predeterminado `~/.local/share` para `XDG_DATA_HOME`.
 
-`local_data/` está excluido de Git. La distribución pública contiene código,
-pruebas con datos sintéticos y ejemplos propios; excluye los XML y la biblioteca
-comercial importada. Un paquete de trabajo privado para el usuario puede contener
-su biblioteca portátil. Los proyectos que incorporan copias de registros también
-contienen esos datos: revisar su procedencia antes de publicarlos como ejemplos.
+`local_data/` está excluido de Git para conservar las personalizaciones del usuario
+fuera del repositorio. La base distribuida reside en `data/catalog/catalog-v5.json.gz`
+dentro del paquete Python; conserva los campos originales y un manifiesto de fuentes.
+Las entradas locales con el mismo identificador tienen prioridad y no se modifican
+al abrir el programa. Véase [Catálogo nativo 0.5.1](catalog-native.md).
 
 MIT cubre el código y los datos sintéticos propios. No cambia las condiciones de
 los datos importados. La importación local permanece utilizable sin publicar los

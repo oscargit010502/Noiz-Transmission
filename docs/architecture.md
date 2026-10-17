@@ -1,4 +1,4 @@
-# Arquitectura de Noiz Transmission 0.5.0
+# Arquitectura de Noiz Transmission 0.5.1
 
 Noiz Transmission es un banco de trabajo de escritorio para Windows, con interfaz
 PySide6 y ejecución por comandos. Desde V3 permite componer hasta cuatro hojas, con seis
@@ -15,7 +15,7 @@ son necesarias, pero no sustituyen la validación del modelo físico.
 | Componente | Responsabilidad y estado V5 |
 | --- | --- |
 | Motor independiente | Hasta cuatro placas con masa, flexión y amortiguamiento; cámaras con gas; Miki en relleno, Facing y lámina porosa; integración energética; Rw provisional y STC legado 32/8; sin nuevas ecuaciones físicas en V5 |
-| Biblioteca | XML 9.0/22 y 10.0/7–8; ocho familias, incluidas conexiones; 3.629 registros en el catálogo personal V5; filtros, referencias explícitas y procedencia conservada; ejemplos sintéticos públicos |
+| Biblioteca | XML 9.0/22 y 10.0/7–8; ocho familias, incluidas conexiones; 3.629 registros integrados; filtros, referencias explícitas y procedencia conservada; ejemplos sintéticos públicos |
 | Interfaz | Single/Double/Triple/Quad → Panel/Frame → Layer; productos integrados; sección 2D y perspectiva 3D con proporciones reales, recorte y detalle opcionales; gráfica cuadrada con referencia Rw/STC y leyenda lateral; tabla, comparación y variantes |
 | Banco de validación | Verificación matemática y contraste algorítmico independiente; ensayos experimentales pendientes |
 | Documentación | Ecuaciones, ámbitos admitidos, unidades, fuentes, protocolos y comandos reproducibles |
@@ -154,5 +154,8 @@ legibles de planos ni BIM. Las comprobaciones y las fuentes pendientes están en
 
 La selección portátil prioriza `catalog-v5.json`, después `catalog-v3.json` y
 `catalog.json`, sin sobrescribir ninguno. La variable `NOIZ_CATALOG_PATH` tiene
-prioridad sobre esa búsqueda. Véase [Catálogo internacional](materials.md) para
-las ubicaciones y la separación entre paquete público y personal.
+prioridad sobre esa búsqueda y selecciona una biblioteca aislada. Sin esa variable,
+`load_application_catalog()` combina la base de `data/catalog/` con la biblioteca
+local, dando prioridad a las entradas del usuario. Los recursos se leen con
+`importlib.resources` sin escribir en la instalación; los JSON locales y los
+bytes integrados comparten el mismo validador. Véase [Catálogo nativo](catalog-native.md).

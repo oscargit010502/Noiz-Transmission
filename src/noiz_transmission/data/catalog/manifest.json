@@ -1,0 +1,57 @@
+{
+  "format_version": 1,
+  "entry_count": 3629,
+  "catalog_sha256": "5e2408afd20df4a647d0685d743ed4d5577e1fde5cbd12c4975db3b7b59b2d62",
+  "kinds": {
+    "absorption": 523,
+    "connection": 387,
+    "core": 45,
+    "floor_cover": 669,
+    "glazing": 80,
+    "material": 1575,
+    "profile": 281,
+    "stud": 69
+  },
+  "sources": [
+    {
+      "filename": "Insul Absorption.xml",
+      "sha256": "022773fe52ded410fa3aa2b3a72d2cbd1e41554bcc38e8754fea792eec0dbc6b",
+      "entry_count": 523
+    },
+    {
+      "filename": "Insul Connections.xml",
+      "sha256": "46c612ae8310acd586c88a7f19007d346a013d3fcafeecba532444c2780c3011",
+      "entry_count": 387
+    },
+    {
+      "filename": "Insul Cores.xml",
+      "sha256": "8c31d52f6932317843ab34eb15c50a9f9f749a7e4e15bdb197658207a29adf28",
+      "entry_count": 45
+    },
+    {
+      "filename": "Insul Flooring.xml",
+      "sha256": "97a07b2052931ce0d06fd069f8249e08edc92977015795d1ead4acc36e3716e2",
+      "entry_count": 669
+    },
+    {
+      "filename": "Insul Glazing.xml",
+      "sha256": "f5f5f664264f744175968c4572f037312f7e8124958304cc786bece596009231",
+      "entry_count": 80
+    },
+    {
+      "filename": "Insul Materials.xml",
+      "sha256": "211280044035338886d08a8989afcb75dd511d059e1b2ba6c730ba17b9aedccf",
+      "entry_count": 1575
+    },
+    {
+      "filename": "Insul Profile.xml",
+      "sha256": "3f0acd4a443baefd1c60f1b674b33cb2adcf7fef31881d2af8b8b46b9b048a6e",
+      "entry_count": 281
+    },
+    {
+      "filename": "Insul Studs.xml",
+      "sha256": "86f7173f0846f70fd5d0b84cff0593bf8ff7e87903849281eafdd650b33b18b9",
+      "entry_count": 69
+    }
+  ]
+}

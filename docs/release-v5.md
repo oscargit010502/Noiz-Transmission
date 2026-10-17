@@ -1,5 +1,9 @@
 # Entrega V5 · 0.5.0
 
+Documento de la entrega inicial. **0.5.1 sustituye la separación del catálogo en
+paquete personal por una base integrada en GitHub y en el wheel**; véase
+[Catálogo nativo](catalog-native.md). Las cifras de validación siguientes corresponden a 0.5.0.
+
 V5 mejora la representación del elemento, incorpora los ocho XML actualizados
 y presenta el espectro con ejes físicamente cuadrados, leyenda lateral y contorno
 de referencia Rw/STC. Conserva los controles Qt compactos de V4 y el esquema 3

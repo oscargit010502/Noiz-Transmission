@@ -75,9 +75,8 @@ from noiz_transmission.application.assembly_services import (
 from noiz_transmission.catalog import (
     catalog_spectrum,
     default_catalog_path,
-    example_entries,
     import_xml,
-    load_catalog,
+    load_application_catalog,
     merge_catalog,
     save_catalog,
 )
@@ -200,7 +199,7 @@ class MainWindow(QMainWindow):
         self._worker: _PredictionWorker | None = None
         self._pool = QThreadPool.globalInstance()
         try:
-            self.entries = load_catalog(default_catalog_path()) or example_entries()
+            self.entries = load_application_catalog()
             catalog_error = ""
         except (OSError, ValueError) as exc:
             self.entries = ()

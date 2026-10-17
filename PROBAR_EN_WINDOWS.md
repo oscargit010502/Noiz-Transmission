@@ -5,8 +5,8 @@ La ventana se abre en tu ordenador. Esta entrega contiene código y un lanzador
 
 ## Descargar y abrir
 
-1. Descarga el ZIP **V5 personal** de la conversación y selecciona **Extraer todo**.
-   La carpeta `Noiz-Transmission` debe contener `INICIAR_NOIZ.cmd`, `pyproject.toml`,
+1. Descarga el [ZIP V5 actualizado desde GitHub](https://github.com/oscargit010502/Noiz-Transmission/archive/refs/heads/codex/noiz-transmission-v5.zip)
+   y selecciona **Extraer todo**. La carpeta del proyecto debe contener `INICIAR_NOIZ.cmd`, `pyproject.toml`,
    `uv.lock`, `examples` y `src`. Usa una carpeta nueva para conservar tus versiones anteriores.
 2. Instala **uv** siguiendo sus
    [instrucciones oficiales para Windows](https://docs.astral.sh/uv/getting-started/installation/).
@@ -14,14 +14,12 @@ La ventana se abre en tu ordenador. Esta entrega contiene código y un lanzador
 3. Haz doble clic en **`INICIAR_NOIZ.cmd`**. La primera ejecución necesita Internet
    para descargar Python 3.13 y dependencias. Las siguientes reutilizan `.venv`.
 
-El paquete **personal** incluye `local_data/catalog-v5.json` con **3.629 registros**
-convertidos de tus ocho XML actualizados y los originales en `local_data/xml-v5/`.
-El paquete **source** incluye código y
-materiales sintéticos; puedes cargar tus XML con **Importar XML…**. Los datos del
-paquete personal conservan su procedencia y derechos y están excluidos de Git.
-Ese paquete también incluye `local_data/v5_catalog_demo.noiz.json`: Single usa
-una placa de 10 mm del catálogo y Double permite inspeccionar una conexión
-IsoMax y un absorbente de 75 mm. La unión estructural sigue sin modelo de cálculo.
+**Desde 0.5.1, este ZIP incluye los 3.629 registros de los ocho XML.** Aparecen
+automáticamente en **Biblioteca…**, Products, Frame e Infill. No necesitas un
+paquete personal, importar archivos ni copiar `local_data` para tener la base.
+La carpeta `src/noiz_transmission/data/catalog/` contiene el recurso comprimido,
+su manifiesto y la atribución de los datos. No edites el archivo comprimido;
+usa **Biblioteca… → Crear copia editable** para personalizar un material.
 
 En PowerShell, dentro de la carpeta extraída, también puedes ejecutar:
 
@@ -61,10 +59,13 @@ bloqueado. **Biblioteca → Referencias** muestra enlaces documentales cuando el
 registro los contiene. Los ocho XML de esta entrega no incluyen enlaces legibles
 a drawings/BIM: no se atribuye precisión de fabricante a las geometrías esquemáticas.
 
-Conserva tu carpeta anterior y sus materiales propios. El catálogo V5 tiene
-prioridad sobre V3 y no los combina automáticamente. El paquete personal incluye
-`local_data/CONSERVAR_MATERIALES_PROPIOS_V5.md` para abrir la biblioteca anterior
-mediante `NOIZ_CATALOG_PATH` o combinar tus materiales propios en un archivo nuevo.
+Conserva tu carpeta anterior y sus materiales propios. Si utilizabas una biblioteca
+portátil, copia su carpeta `local_data` a la carpeta nueva: V5.1 la combina con
+la base integrada sin sobrescribirla al abrir. Si hay varios catálogos portátiles,
+se elige `catalog-v5.json`, luego `catalog-v3.json` y luego `catalog.json`.
+Si configuraste `NOIZ_CATALOG_PATH`, esa variable selecciona una biblioteca aislada;
+para recuperar la carga normal en PowerShell ejecuta
+`Remove-Item Env:NOIZ_CATALOG_PATH -ErrorAction SilentlyContinue` antes de iniciar.
 Los proyectos V1/V2/V3/V4 se abren en V5. Se mantiene el esquema 3; los proyectos
 V5 que usan la nueva familia Connection requieren V5 para abrirse correctamente.
 
@@ -170,7 +171,7 @@ Noiz-Transmission/
 │   ├── core/            Motor físico y clasificación
 │   ├── application/     Proyectos, variantes y exportaciones
 │   ├── catalog/         Importación y biblioteca local
-│   ├── data/            Materiales sintéticos públicos
+│   ├── data/            Catálogo integrado y ejemplos sintéticos
 │   ├── adapters/        Contrastes con Phonometry
 │   └── ui/              Interfaz de escritorio
 ├── local_data/          Catálogo personal; excluido de Git
@@ -186,8 +187,8 @@ El código V5 se publica en
 Abre ese enlace para ver las carpetas. En la portada del repositorio, cambia
 **main** por esa rama. También puedes descargar **Code → Download ZIP**.
 Las versiones anteriores siguen en las ramas `codex/noiz-transmission-v2` y
-`codex/noiz-transmission-v3` y `codex/noiz-transmission-v4`. Los XML y el catálogo personal
-no forman parte de esas ramas públicas.
+`codex/noiz-transmission-v3` y `codex/noiz-transmission-v4`. La rama V5 actualizada
+incluye la base convertida; tus modificaciones locales no se publican automáticamente.
 
 En Codex, la copia está en `/workspace/Noiz-Transmission`. Las comprobaciones de
 esta entrega se realizan en Linux, incluida la interfaz Qt sin pantalla. Windows

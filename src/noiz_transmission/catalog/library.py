@@ -606,6 +606,11 @@ def load_catalog(path: str | Path) -> tuple[CatalogEntry, ...]:
         return ()
     with path.open("rb") as stream:
         data = stream.read(_MAX_BYTES + 1)
+    return decode_catalog(data)
+
+
+def decode_catalog(data: bytes) -> tuple[CatalogEntry, ...]:
+    """Validate persisted or bundled bytes with the same strict schema."""
     if len(data) > _MAX_BYTES:
         raise ValueError("El catálogo supera el límite de 32 MiB.")
     try:

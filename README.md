@@ -4,7 +4,9 @@ Aplicación open source de escritorio para estudiar el aislamiento acústico de
 **elementos constructivos**, con motor físico independiente, materiales con
 procedencia y resultados reproducibles. Python, PySide6, NumPy, SciPy y PyQtGraph.
 
-**Versión 0.5.0 · prototipo científico.** La V5 mejora la vista en perspectiva y
+**Versión 0.5.1 · catálogo integrado · prototipo científico.** Los **3.629 registros**
+ya vienen incluidos en la descarga de GitHub y aparecen al iniciar, sin importar XML.
+La V5 mejora la vista en perspectiva y
 el corte 2D con proporciones reales, recorte opcional y transparencia por profundidad.
 El gráfico tiene ejes de igual longitud, leyenda a la derecha y la curva de
 referencia ajustada Rw o STC. Incorpora los ocho catálogos actualizados, incluidas
@@ -101,13 +103,18 @@ Los ocho XML actualizados aportados contienen **3.629 registros**. Importar un
 registro no demuestra su validez experimental ni su compatibilidad con el motor.
 El `Damping` de absorbentes no se convierte automáticamente en resistividad.
 
-La distribución pública incluye ejemplos sintéticos. El paquete personal guarda
-el catálogo en `local_data/catalog-v5.json`, los ocho XML originales en
-`local_data/xml-v5/` y un manifiesto SHA-256; están excluidos de Git y del paquete
-Python. Se reconocen también `catalog-v3.json` y `catalog.json`, en ese orden de
-preferencia después de V5. `NOIZ_CATALOG_PATH` permite elegir otra ruta. Sin
-catálogo local se usa el almacenamiento del usuario y se ofrecen ejemplos
-sintéticos para empezar. Los datos de terceros conservan sus propios derechos.
+Desde **0.5.1**, el catálogo se distribuye como recurso del programa en
+`src/noiz_transmission/data/catalog/catalog-v5.json.gz`, junto con su manifiesto
+de procedencia. Está incluido en el ZIP de GitHub y en el paquete Python. Se carga
+sin conexión, sin necesitar los XML originales ni escribir en la instalación.
+Los materiales propios de la biblioteca local se combinan con la base; si comparten
+identificador, se conserva la versión del usuario. Reimportar el mismo XML no duplica
+los registros. **Importar XML…** queda disponible para ampliaciones futuras.
+
+`NOIZ_CATALOG_PATH` es una selección explícita de una biblioteca aislada y excluye
+la base integrada. Sin esa variable, las bibliotecas portátiles `catalog-v5.json`,
+`catalog-v3.json` y `catalog.json` se reconocen en ese orden. Los datos de terceros
+conservan su procedencia y derechos: véase el [aviso del catálogo](src/noiz_transmission/data/catalog/NOTICE.md).
 
 Los nuevos XML no contienen enlaces legibles a drawings o BIM. Las dimensiones
 de catálogo no acreditan una sección exacta de fabricante; las geometrías sin
@@ -151,6 +158,7 @@ verificada. Phonometry se instala como extra para contrastes independientes.
 
 - [Arquitectura](docs/architecture.md) y [hoja de ruta](docs/roadmap.md)
 - [Entrega V5 y comprobaciones realizadas](docs/release-v5.md) y [criterios Rw/STC](docs/v4-ratings.md)
+- [Actualización 0.5.1: materiales integrados](docs/catalog-native.md)
 - [Entrega V4 anterior](docs/release-v4.md)
 - [Entrega V3 anterior](docs/release-v3.md)
 - [Validación](docs/validation.md), [fuentes](docs/sources.md) y [revisión INSUL 10/XML](docs/v3-reference-review.md)
