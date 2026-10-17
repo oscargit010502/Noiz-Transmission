@@ -1,11 +1,11 @@
-# Probar Noiz Transmission V4 en Windows
+# Probar Noiz Transmission V5 en Windows
 
 La ventana se abre en tu ordenador. Esta entrega contiene código y un lanzador
 `.cmd`; todavía no contiene un instalador `.exe`.
 
 ## Descargar y abrir
 
-1. Descarga el ZIP **V4** de la conversación y selecciona **Extraer todo**.
+1. Descarga el ZIP **V5 personal** de la conversación y selecciona **Extraer todo**.
    La carpeta `Noiz-Transmission` debe contener `INICIAR_NOIZ.cmd`, `pyproject.toml`,
    `uv.lock`, `examples` y `src`. Usa una carpeta nueva para conservar tus versiones anteriores.
 2. Instala **uv** siguiendo sus
@@ -14,41 +14,61 @@ La ventana se abre en tu ordenador. Esta entrega contiene código y un lanzador
 3. Haz doble clic en **`INICIAR_NOIZ.cmd`**. La primera ejecución necesita Internet
    para descargar Python 3.13 y dependencias. Las siguientes reutilizan `.venv`.
 
-El paquete **personal** incluye `local_data/catalog-v3.json` con **3.242 registros**
-convertidos de tus siete XML INSUL 10.0/8. El paquete **source** incluye código y
+El paquete **personal** incluye `local_data/catalog-v5.json` con **3.629 registros**
+convertidos de tus ocho XML actualizados y los originales en `local_data/xml-v5/`.
+El paquete **source** incluye código y
 materiales sintéticos; puedes cargar tus XML con **Importar XML…**. Los datos del
 paquete personal conservan su procedencia y derechos y están excluidos de Git.
-Ese paquete también incluye `local_data/v3_catalog_demo.noiz.json`, una placa de
-10 mm tomada del catálogo, para comprobar la selección y el cálculo con esos datos.
+Ese paquete también incluye `local_data/v5_catalog_demo.noiz.json`: Single usa
+una placa de 10 mm del catálogo y Double permite inspeccionar una conexión
+IsoMax y un absorbente de 75 mm. La unión estructural sigue sin modelo de cálculo.
 
 En PowerShell, dentro de la carpeta extraída, también puedes ejecutar:
 
 ```powershell
+$env:UV_LINK_MODE = "copy"
 uv sync --locked --extra desktop
 uv run --locked --extra desktop noiz-transmission
 ```
 
+La V5 configura la instalación por copia tanto en el proyecto como en el lanzador.
+Esto evita el error **396** de OneDrive con vínculos permanentes. Si tu instalación
+anterior quedó incompleta, cierra Noiz y repite los comandos anteriores en la
+carpeta extraída de V5; uv completará las dependencias. No necesitas borrar el
+catálogo ni tus proyectos.
+
 No uses `/workspace/...` en tu PC: esa es la ubicación de la copia en la nube.
 
-## Qué cambia en la V4
+## Qué cambia en la V5
 
-La cabecera ocupa menos altura; el índice aparece junto a la tabla de octavas a
-la izquierda. El selector permite **Rw / STC** para transmisión aérea. STC utiliza
+El gráfico conserva ejes de igual longitud, incluso al cambiar su tamaño, y
+muestra las leyendas a la derecha. El selector **Rw / STC** cambia el índice y
+su curva de referencia ajustada al resultado actual. STC utiliza
 el procedimiento legado 32/8 descrito en [criterios de clasificación](docs/v4-ratings.md),
 con alcance provisional; no es una conversión de Rw. IIC y Ln,w requieren el motor
 de impacto pendiente; L’nT,w corresponde a recintos y no es el mismo índice.
 
-Las listas tienen más altura. Search, Thickness y Quantity comparten una fila y
-**Propiedades** despliega los parámetros adicionales. Qt dibuja sus controles
-nativos, incluidas las flechas de incremento/decremento. El render permite
-perspectiva con vista parcial de la cavidad y un corte 2D estrecho. Arrastrar hacia
-la izquierda gira a la izquierda; arrastrar hacia arriba gira hacia arriba.
+La tabla superior tiene encabezados contrastados y valores centrados. Se conservan
+los controles Qt compactos de V4. El render usa proporciones reales por defecto,
+mejora la transparencia y reutiliza la imagen mientras no cambie la vista.
+**Recorte** descubre la cavidad; **Detalle** amplía el espesor para inspeccionarlo
+sin cambiar el proyecto. Arrastrar hacia la izquierda gira a la izquierda;
+arrastrar hacia arriba gira hacia arriba. **Restablecer vista** recupera la cámara.
 
-Si añadiste materiales propios en V3, conserva tu `local_data/catalog-v3.json`
-y cópialo a la nueva carpeta V4, en lugar de reemplazarlo por el catálogo base.
-Los proyectos V1/V2/V3 siguen siendo compatibles; V4 conserva el esquema 3.
+Frame ofrece ahora los catálogos **Connections y Studs**. Seleccionar una conexión
+carga las cotas declaradas; si fija la separación de montantes, ese control queda
+bloqueado. **Biblioteca → Referencias** muestra enlaces documentales cuando el
+registro los contiene. Los ocho XML de esta entrega no incluyen enlaces legibles
+a drawings/BIM: no se atribuye precisión de fabricante a las geometrías esquemáticas.
 
-## Recorrido para comprobar la V4
+Conserva tu carpeta anterior y sus materiales propios. El catálogo V5 tiene
+prioridad sobre V3 y no los combina automáticamente. El paquete personal incluye
+`local_data/CONSERVAR_MATERIALES_PROPIOS_V5.md` para abrir la biblioteca anterior
+mediante `NOIZ_CATALOG_PATH` o combinar tus materiales propios en un archivo nuevo.
+Los proyectos V1/V2/V3/V4 se abren en V5. Se mantiene el esquema 3; los proyectos
+V5 que usan la nueva familia Connection requieren V5 para abrirse correctamente.
+
+## Recorrido para comprobar la V5
 
 1. Abre **`examples/v3_single.noiz.json`** con **Abrir…**. En Wall → Single →
    Panel 1 → Layer 1 encontrarás una placa sintética de 12,5 mm y 10 kg/m².
@@ -78,6 +98,9 @@ Los proyectos V1/V2/V3 siguen siendo compatibles; V4 conserva el esquema 3.
    arriba, la descripción y la tabla en octavas.
 9. **Chart** y **Tables** muestran los tercios de octava. Arrastra el separador
    horizontal o pulsa **Ocultar gráfica** para dar más espacio a los controles.
+   El cuadrado mantiene su forma; las casillas de la leyenda ocultan curvas sin
+   borrar resultados. El contorno Rw abarca 100–3150 Hz y STC 125–4000 Hz.
+   No se dibujan curvas de flancos ni de ISO 10140.
    En **Comparación**, guarda el resultado actual, cambia una entrada y recalcula.
    Las comparaciones se exportan aparte mediante CSV; no se guardan en el proyecto.
 10. Usa **Archivo → Exportar → Informe HTML…** o **Datos CSV…**. El informe
@@ -88,7 +111,8 @@ incidencia normal. Rw y STC solo se muestran para campo difuso. Las dimensiones 
 el elemento y permiten calcular la proporción de fuga; no convierten el modelo de
 placa infinita en una simulación de tamaño finito.
 
-Para revisar específicamente el render, abre **`examples/v4_visual_demo.noiz.json`**.
+Para revisar específicamente el render V5, abre **`examples/v4_visual_demo.noiz.json`**,
+conservado para comparar la misma geometría entre versiones.
 Wall → Double contiene dos placas, absorbente y un montante metálico U sintético.
 Alterna 3D/2D y arrastra la vista. La variante Roof → Single del mismo archivo
 muestra una chapa trapezoidal. Es un ejemplo de geometría: el cálculo acústico
@@ -150,19 +174,19 @@ Noiz-Transmission/
 │   ├── adapters/        Contrastes con Phonometry
 │   └── ui/              Interfaz de escritorio
 ├── local_data/          Catálogo personal; excluido de Git
-├── examples/            Proyectos compatibles y demostración visual V4
+├── examples/            Proyectos compatibles y demostración visual sintética
 ├── tests/               Pruebas automáticas
 ├── validation/          Casos matemáticos
 ├── docs/                Teoría, alcance y fuentes
 └── .github/workflows/   CI para Windows y Linux
 ```
 
-El código V4 se publica en
-[`codex/noiz-transmission-v4`](https://github.com/oscargit010502/Noiz-Transmission/tree/codex/noiz-transmission-v4).
+El código V5 se publica en
+[`codex/noiz-transmission-v5`](https://github.com/oscargit010502/Noiz-Transmission/tree/codex/noiz-transmission-v5).
 Abre ese enlace para ver las carpetas. En la portada del repositorio, cambia
 **main** por esa rama. También puedes descargar **Code → Download ZIP**.
 Las versiones anteriores siguen en las ramas `codex/noiz-transmission-v2` y
-`codex/noiz-transmission-v3`. Los XML y el catálogo personal
+`codex/noiz-transmission-v3` y `codex/noiz-transmission-v4`. Los XML y el catálogo personal
 no forman parte de esas ramas públicas.
 
 En Codex, la copia está en `/workspace/Noiz-Transmission`. Las comprobaciones de

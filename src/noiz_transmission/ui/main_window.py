@@ -10,7 +10,7 @@ from threading import Event
 
 import pyqtgraph as pg
 from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, Signal, Slot
-from PySide6.QtGui import QAction, QCloseEvent, QFont, QKeySequence
+from PySide6.QtGui import QAction, QCloseEvent, QColor, QFont, QKeySequence
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QApplication,
@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QSplitter,
     QStackedWidget,
+    QStyleOptionViewItem,
     QTabBar,
     QTableWidget,
     QTableWidgetItem,
@@ -60,6 +61,7 @@ from noiz_transmission.application.assemblies import (
     Panel,
 )
 from noiz_transmission.application.assembly_services import (
+    cavity_from_entry,
     default_project_v3,
     describe_assembly,
     export_assembly_csv,
@@ -87,6 +89,7 @@ from noiz_transmission.ui.settings_editors import (
     PorousEditor,
     RainfallEditor,
 )
+from noiz_transmission.ui.spectrum_chart import SquareSpectrumChart, fitted_reference
 from noiz_transmission.ui.style import STYLESHEET
 
 COLORS = ("#007c99", "#b87328", "#7868ac", "#48866f", "#b8596b", "#4d82bd")
@@ -228,8 +231,8 @@ class MainWindow(QMainWindow):
         self.results_panel = self._results()
         self.right_splitter.addWidget(self.results_panel)
         self.right_splitter.setStretchFactor(0, 3)
-        self.right_splitter.setStretchFactor(1, 1)
-        self.right_splitter.setSizes([500, 180])
+        self.right_splitter.setStretchFactor(1, 2)
+        self.right_splitter.setSizes([420, 290])
         self.main_splitter.addWidget(self.right_splitter)
         self.main_splitter.setStretchFactor(0, 1)
         self.main_splitter.setStretchFactor(1, 3)
@@ -316,6 +319,17 @@ class MainWindow(QMainWindow):
         row.setSpacing(6)
         self.octave_table = QTableWidget(1, 7)
         self.octave_table.setHorizontalHeaderLabels(["63", "125", "250", "500", "1k", "2k", "4k"])
+        self.octave_table.setObjectName("octaveSummary")
+        self.octave_table.setAccessibleName("TL [dB] · bandas de 1/1 octava [Hz]")
+        self.octave_table.setStyleSheet("""
+            QTableWidget#octaveSummary { border: 1px solid #7294a2; gridline-color: #d5e0e5; }
+            QTableWidget#octaveSummary QHeaderView::section {
+                background: #175f78; color: white; border: 0; border-right: 1px solid #6e96a6;
+                padding: 2px 0; font-weight: 600;
+            }
+        """)
+        for index, frequency in enumerate((63, 125, 250, 500, 1000, 2000, 4000)):
+            self.octave_table.horizontalHeaderItem(index).setToolTip(f"{frequency} Hz · banda de 1/1 octava")
         self.octave_table.verticalHeader().hide()
         self.octave_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.octave_table.horizontalHeader().setMinimumSectionSize(25)
@@ -361,6 +375,24 @@ class MainWindow(QMainWindow):
         header.setFixedHeight(header_height)
         self.octave_table.setRowHeight(0, row_height)
         self.octave_table.setFixedHeight(header_height + row_height + 2 * self.octave_table.frameWidth())
+        # Native item delegates reserve text margins in addition to glyph
+        # width. Fit the actual bold one-decimal values, including those
+        # margins and the grid, instead of merely making the cell rect visible.
+        widths = []
+        for column in range(self.octave_table.columnCount()):
+            index = self.octave_table.model().index(0, column)
+            if self.octave_table.item(0, column) is None:
+                continue
+            option = QStyleOptionViewItem()
+            delegate = self.octave_table.itemDelegateForIndex(index)
+            delegate.initStyleOption(option, index)
+            widths.append(delegate.sizeHint(option, index).width() + 2)
+        section_width = max(25, *widths) if widths else 25
+        header.setMinimumSectionSize(section_width)
+        minimum_width = max(224, section_width * self.octave_table.columnCount()
+                            + 2 * self.octave_table.frameWidth())
+        self.octave_table.setMaximumWidth(max(310, minimum_width))
+        self.octave_table.setMinimumWidth(minimum_width)
 
     def _sidebar(self) -> QWidget:
         side = QWidget()
@@ -384,6 +416,15 @@ class MainWindow(QMainWindow):
         self.view_combo.setAccessibleName("Vista del elemento")
         self.view_combo.currentIndexChanged.connect(lambda index: self.section_view.set_exploded(index == 0))
         layout.addWidget(self.view_combo)
+        self.cutaway_check = QCheckBox("Recorte")
+        self.cutaway_check.setChecked(True)
+        self.cutaway_check.setToolTip("Vista parcial de las caras exteriores para inspeccionar la cámara.")
+        self.cutaway_check.toggled.connect(lambda checked: self.section_view.set_cutaway(checked))
+        layout.addWidget(self.cutaway_check)
+        self.depth_detail_check = QCheckBox("Detalle")
+        self.depth_detail_check.setToolTip("Amplía sólo los espesores en la vista. Desactivado: proporciones reales.")
+        self.depth_detail_check.toggled.connect(lambda checked: self.section_view.set_depth_exaggeration(checked))
+        layout.addWidget(self.depth_detail_check)
         layout.addWidget(label("Opacidad", "muted"))
         self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
         self.opacity_slider.setRange(10, 100)
@@ -395,7 +436,7 @@ class MainWindow(QMainWindow):
         reset.clicked.connect(self._reset_view)
         layout.addWidget(reset)
         layout.addStretch()
-        layout.addWidget(label("Noiz V4", "muted"))
+        layout.addWidget(label("Noiz V5", "muted"))
         return side
 
     def _construction(self) -> QWidget:
@@ -699,7 +740,9 @@ class MainWindow(QMainWindow):
         controls = QHBoxLayout()
         controls.setSpacing(3)
         self.frame_combo = QComboBox()
-        for title, key in (("Paneles independientes", "independent"), ("Timber stud", "timber"), ("Steel stud", "steel")):
+        for title, key in (("Paneles independientes", "independent"), ("Timber stud", "timber"),
+                           ("Steel stud", "steel"), ("Masonry frame", "masonry"),
+                           ("Material no definido", "unknown")):
             self.frame_combo.addItem(title, key)
         self.frame_combo.currentIndexChanged.connect(lambda: self._set_cavity_field("frame_type", self.frame_combo.currentData()))
         controls.addWidget(self.frame_combo, 1)
@@ -729,7 +772,8 @@ class MainWindow(QMainWindow):
             dimensions.addWidget(field)
         dimensions.addStretch(1)
         layout.addLayout(dimensions)
-        self.stud_picker = ProductPicker(self.entries, kind="stud")
+        self.stud_picker = ProductPicker(self.entries, kind=("connection", "stud"))
+        self.stud_picker.search_edit.setPlaceholderText("Buscar Connections / Studs · nombre, categoría o fabricante")
         self.stud_picker.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
         self.stud_picker.setMinimumHeight(95)
         self.stud_picker.count_label.hide()
@@ -779,15 +823,9 @@ class MainWindow(QMainWindow):
     def _select_stud_entry(self, entry) -> None:
         if self._loading or not self.project.cavities:
             return
-        properties = entry.properties
-        changes = {"stud": entry, "frame_type": "timber" if properties.get("frame_material") == "timber" else "steel"}
-        for key, source in (("stud_width_mm", "stud_width_m"), ("stud_depth_mm", "stud_depth_m"), ("stud_spacing_mm", "stud_spacing_m")):
-            value = properties.get(source)
-            if isinstance(value, (float, int)) and value > 0:
-                changes[key] = value * 1000
         try:
             cavities = list(self.project.cavities)
-            cavities[self._selected_cavity] = replace(cavities[self._selected_cavity], **changes)
+            cavities[self._selected_cavity] = cavity_from_entry(cavities[self._selected_cavity], entry)
             self._commit(replace(self.project, cavities=tuple(cavities)))
             self._show_cavity()
         except (ValueError, TypeError) as exc:
@@ -818,23 +856,13 @@ class MainWindow(QMainWindow):
         layout.setSpacing(2)
         self.result_tabs = QTabWidget()
         self.result_tabs.setDocumentMode(True)
-        self.chart_view = pg.PlotWidget(background="#ffffff")
-        self.chart_view.setMinimumHeight(100)
-        self.chart_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
-        self.plot_item = self.chart_view.getPlotItem()
-        self.plot_item.setLogMode(x=True, y=False)
-        self.plot_item.setLabel("bottom", "Frecuencia [Hz]", color="#476476")
-        self.plot_item.setLabel("left", "R [dB]", color="#476476")
-        self.plot_item.setMenuEnabled(False)
-        self.plot_item.showGrid(x=True, y=True, alpha=.18)
-        self.plot_item.setRange(xRange=(math.log10(50), math.log10(5000)), yRange=(0, 80), padding=.02)
-        self.plot_item.getAxis("bottom").setTicks([[(math.log10(f), str(f)) for f in (50, 100, 250, 500, 1000, 2000, 5000)]])
-        for key in ("bottom", "left"):
-            self.plot_item.getAxis(key).setPen("#94aeba")
-            self.plot_item.getAxis(key).setTextPen("#506e80")
-        self.legend = self.plot_item.addLegend(offset=(8, 3), labelTextColor="#345367", brush="#ffffffdd", pen=None)
+        self.spectrum_chart = SquareSpectrumChart(widget)
+        self.chart_view = self.spectrum_chart.plot_widget
+        self.plot_item = self.spectrum_chart.plot
+        self.legend = self.spectrum_chart.legend
         self.traces = []
-        self.result_tabs.addTab(self.chart_view, "Chart")
+        self.reference_trace = None
+        self.result_tabs.addTab(self.spectrum_chart, "Chart")
         self.spectrum_table = table(["Frecuencia [Hz]", "R actual [dB]"])
         self.result_tabs.addTab(self.spectrum_table, "Tables")
         comparisons = QWidget()
@@ -966,7 +994,7 @@ class MainWindow(QMainWindow):
         try:
             cavities = list(self.project.cavities)
             changes = {key: value}
-            if key == "frame_type" and value == "independent":
+            if key == "frame_type" and (value == "independent" or value != cavities[self._selected_cavity].frame_type):
                 changes["stud"] = None
             cavities[self._selected_cavity] = replace(cavities[self._selected_cavity], **changes)
             self._field_errors.pop(f"cavity:{self._selected_cavity}:{key}", None)
@@ -1240,6 +1268,13 @@ class MainWindow(QMainWindow):
         display_value(self.absorber_spin, cavity.absorber_thickness_mm)
         display_value(self.resistivity_spin, cavity.flow_resistivity_pa_s_m2 or 0)
         self.absorber_label.setText("Infill")
+        props = cavity.stud.properties if cavity.stud else {}
+        fixed_spacing = props.get("stud_spacing_defined") is True and props.get("stud_spacing_fixed") is True
+        self.cavity_fields["stud_spacing_mm"].setEnabled(not fixed_spacing)
+        if fixed_spacing:
+            self.cavity_fields["stud_spacing_mm"].setToolTip("Separación fija declarada por la conexión del catálogo.")
+        else:
+            self.cavity_fields["stud_spacing_mm"].setToolTip("Separación entre montantes [mm].")
         self._loading = False
         self._refresh_cavity_note()
 
@@ -1249,6 +1284,9 @@ class MainWindow(QMainWindow):
         self.frame_note.setText("Sin puentes estructurales entre paneles." if independent else
                                 "Montantes: modelo de acoplamiento estructural pendiente.")
         self.frame_note.setToolTip(self.frame_note.text())
+        if cavity.stud and cavity.stud.kind == "connection":
+            self.frame_note.setText("Connection · geometría de herrajes y cálculo de unión pendientes.")
+            self.frame_note.setToolTip(f"{cavity.stud.name}\nDimensiones del XML; no contiene un modelo BIM de la conexión.")
         self.resistivity_spin.setEnabled(cavity.absorber_count > 0)
 
     def _change_topology(self, index: int) -> None:
@@ -1539,7 +1577,11 @@ class MainWindow(QMainWindow):
         if prediction is None:
             return None
         key = self.rating_combo.currentData()
-        return prediction.rw_db if key == "rw" else (prediction.stc_db if key == "stc" else None)
+        try:
+            return prediction.rw_db if key == "rw" else (prediction.stc_db if key == "stc" else None)
+        except ValueError:
+            # Older imported comparisons may have only a partial spectrum.
+            return None
 
     def _refresh_rating(self) -> None:
         key = self.rating_combo.currentData()
@@ -1566,23 +1608,36 @@ class MainWindow(QMainWindow):
         self.rating_detail.setToolTip(tooltip)
         self.rating_combo.setToolTip(tooltip)
 
+    def _style_octave_cell(self, index: int) -> None:
+        item = self.octave_table.item(0, index)
+        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        font = QFont(self.octave_table.font())
+        font.setBold(True)
+        item.setFont(font)
+        item.setForeground(QColor("#203f50"))
+        item.setBackground(QColor("#f0f6f8" if index % 2 == 0 else "#ffffff"))
+        item.setToolTip(f"TL {item.text()} dB · banda de 1/1 octava")
+
     def _refresh_results(self) -> None:
         self.plot_item.clear()
         self.legend.clear()
         self.traces = []
+        self.reference_trace = None
         self._refresh_rating()
         result = self.current_result
         for index in range(7):
             self.octave_table.setItem(0, index, cell("—"))
-            self.octave_table.item(0, index).setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._style_octave_cell(index)
+        self._fit_octave_table()
         if result:
             try:
                 for index, (_, value) in enumerate(octave_summary(result)):
                     self.octave_table.setItem(0, index, cell(f"{value:.1f}"))
-                    self.octave_table.item(0, index).setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self._style_octave_cell(index)
             except ValueError:
                 # A partial imported/comparison spectrum cannot claim a full octave summary.
                 pass
+            self._fit_octave_table()
             frequencies = (result.critical_frequencies_hz if len(result.project.panels) == 1
                            else result.resonance_frequencies_hz)
             prefix = "fc" if len(result.project.panels) == 1 else "f₀"
@@ -1596,19 +1651,38 @@ class MainWindow(QMainWindow):
             for row, (frequency, value) in enumerate(zip(result.frequencies_hz, result.tl_db, strict=True)):
                 self.spectrum_table.setItem(row, 0, cell(f"{frequency:g}"))
                 self.spectrum_table.setItem(row, 1, cell(f"{value:.2f}"))
-        plotted = [(prediction, f"{i + 1}. {prediction.project.name}", COLORS[i], False)
-                   for i, prediction in enumerate(self.predictions)]
+        plotted = []
+        occurrences: dict[int, int] = {}
+        for i, prediction in enumerate(self.predictions):
+            # Immutable prediction identities survive legend rebuilds and row
+            # renumbering. Occurrences also distinguish repeated snapshots.
+            identity = id(prediction)
+            occurrence = occurrences.get(identity, 0)
+            occurrences[identity] = occurrence + 1
+            key = f"comparison:{identity}:{occurrence}"
+            plotted.append((prediction, f"{i + 1}. {prediction.project.name}", COLORS[i], False, key))
+        self.legend.retain_keys({"current", "reference", *(item[4] for item in plotted)})
         if result:
-            plotted.append((result, "Actual", "#123d50", True))
-        for prediction, title, color, current in plotted:
+            plotted.append((result, "TL actual [dB]", "#268338", True, "current"))
+        for prediction, title, color, current, key in plotted:
             trace = self.plot_item.plot(prediction.frequencies_hz, prediction.tl_db,
                                         pen=pg.mkPen(color, width=2.5 if current else 1.5,
                                                      style=Qt.PenStyle.SolidLine if current else Qt.PenStyle.DashLine),
                                         symbol="o" if current else None, symbolSize=4,
                                         symbolBrush=color, symbolPen=color, name=title)
             self.traces.append(trace)
+            self.legend.addItem(trace, title, key=key)
+        reference = (fitted_reference(result, self.rating_combo.currentData())
+                     if result and self._selected_rating(result) is not None else None)
+        if reference:
+            frequencies, levels, title, tooltip = reference
+            self.reference_trace = self.plot_item.plot(
+                frequencies, levels, pen=pg.mkPen("#309cc0", width=1.8, style=Qt.PenStyle.DashLine))
+            self.legend.addItem(self.reference_trace, title, tooltip, key="reference")
         if plotted:
-            values = [level for prediction, _, _, _ in plotted for level in prediction.tl_db]
+            values = [level for prediction, _, _, _, _ in plotted for level in prediction.tl_db]
+            if reference:
+                values.extend(reference[1])
             self.plot_item.setYRange(min(0, min(values) - 5), max(30, max(values) + 5), padding=.02)
         self.comparison_table.horizontalHeaderItem(4).setText(self.rating_combo.currentText())
         self.comparison_table.setRowCount(len(self.predictions))
@@ -1630,7 +1704,9 @@ class MainWindow(QMainWindow):
         if len(self.predictions) >= 6:
             self.statusBar().showMessage("Límite de 6 alternativas. Quita una para añadir otra.")
             return
-        self.predictions.append(self.current_result)
+        # Each saved row has its own immutable identity, even when the same
+        # result is saved twice; legend visibility follows that row on removal.
+        self.predictions.append(replace(self.current_result))
         self._comparison_dirty = True
         self._refresh_results()
         self.comparison_table.selectRow(len(self.predictions) - 1)
@@ -1653,7 +1729,7 @@ class MainWindow(QMainWindow):
         self.results_action.setChecked(True)
         self.toggle_results_button.setText("Ocultar gráfica")
         self.main_splitter.setSizes([450, 820])
-        self.right_splitter.setSizes([500, 180])
+        self.right_splitter.setSizes([420, 290])
 
     def _editor_has_changes(self) -> bool:
         return (bool(self._input_error) or self.project != self._saved_project
@@ -1819,7 +1895,7 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def about(self) -> None:
-        QMessageBox.about(self, "Noiz Transmission", "Noiz Transmission · V4\nDiseño acústico de elementos constructivos.\nCódigo abierto · MIT\nModelos preliminares con procedencia explícita.")
+        QMessageBox.about(self, "Noiz Transmission", "Noiz Transmission · V5\nDiseño acústico de elementos constructivos.\nCódigo abierto · MIT\nModelos preliminares con procedencia explícita.")
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if self._confirm_discard():

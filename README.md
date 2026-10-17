@@ -4,18 +4,19 @@ Aplicación open source de escritorio para estudiar el aislamiento acústico de
 **elementos constructivos**, con motor físico independiente, materiales con
 procedencia y resultados reproducibles. Python, PySide6, NumPy, SciPy y PyQtGraph.
 
-**Versión 0.4.0 · prototipo científico.** La V4 prioriza el espacio vertical:
-controles Qt nativos compactos, listas más altas, tabla de octavas completa y
-selector Rw/STC. La vista incorpora perspectiva, un corte 2D estrecho y perfiles
-abiertos para distinguir los montantes del relleno. La exactitud respecto a sistemas comerciales todavía
+**Versión 0.5.0 · prototipo científico.** La V5 mejora la vista en perspectiva y
+el corte 2D con proporciones reales, recorte opcional y transparencia por profundidad.
+El gráfico tiene ejes de igual longitud, leyenda a la derecha y la curva de
+referencia ajustada Rw o STC. Incorpora los ocho catálogos actualizados, incluidas
+las conexiones. La exactitud respecto a sistemas comerciales todavía
 requiere validación experimental; los resultados no equivalen a un ensayo.
 
-![Editor V4 con controles compactos y un proyecto sintético calculado](docs/images/workbench-v4.png)
+![Editor V5 con tabla de octavas y curva de referencia Rw](docs/images/workbench-v5.png)
 
 ## Descargar y abrir
 
-El código V4 está en la rama
-[`codex/noiz-transmission-v4`](https://github.com/oscargit010502/Noiz-Transmission/tree/codex/noiz-transmission-v4).
+El código V5 está en la rama
+[`codex/noiz-transmission-v5`](https://github.com/oscargit010502/Noiz-Transmission/tree/codex/noiz-transmission-v5).
 Selecciona esa rama y usa **Code → Download ZIP**, o descarga el paquete de esta
 conversación. Extrae el ZIP, instala [uv](https://docs.astral.sh/uv/getting-started/installation/)
 y ejecuta **`INICIAR_NOIZ.cmd`** en Windows. Desde la carpeta del proyecto:
@@ -29,22 +30,22 @@ La primera ejecución descarga Python 3.13 y dependencias si faltan. La
 [guía de Windows](PROBAR_EN_WINDOWS.md) explica cómo probar cada control y dónde
 están las carpetas. Esta entrega contiene código y lanzador; no un instalador `.exe`.
 
-## Cambios de apariencia en V4
+## Cambios en V5
 
-- Menú y barra de herramientas compactos; sin una cabecera grande a todo ancho.
-  Tabla e índice de clasificación comparten el resumen de la izquierda.
-- Búsqueda, espesor y cantidad en una sola fila; propiedades adicionales plegables.
-  A 1366×768, Single muestra 19 productos completos con los ajustes predeterminados.
-- Entradas, pestañas y flechas nativas de Qt. Clics de incremento/decremento
-  verificados en estilos Windows y Fusion, junto con edición por teclado.
-- Tabla de octavas dimensionada con las métricas de fuente, conservando visibles
-  encabezados y valores con escalas de pantalla de 100%, 125% y 150%.
-- Cámara en perspectiva, arrastre en el sentido del cursor, vista parcial para
-  exponer la cavidad y sección 2D vertical para paredes.
-- Montantes metálicos abiertos y perfiles ondulados/trapezoidales según los datos
-  geométricos disponibles. La representación no implementa un modelo de unión.
-- Selector **Rw / STC**, con clasificación independiente de cada índice. IIC y
-  Ln,w permanecen sin valor porque la predicción de impacto sigue pendiente.
+- Ejes del gráfico físicamente cuadrados al redimensionar la ventana o el separador;
+  leyenda lateral con casillas para mostrar u ocultar cada curva.
+- Referencia **Rw / STC** ajustada al resultado actual. Sin curvas de flancos ni
+  límite de laboratorio ISO 10140. Comparaciones conservadas al cambiar el índice.
+- Tabla superior de octavas con cabecera contrastada y valores centrados en negrita;
+  se mantienen los controles Qt compactos y las propiedades plegables de V4.
+- Proporciones reales por defecto en 3D y 2D. **Recorte** expone la cavidad;
+  **Detalle** amplía espesores únicamente en la representación.
+- Caché de geometría e imagen, render adaptado al DPI y transparencia por píxel.
+  Las conexiones sin planos se muestran como esquemas o envolventes identificadas.
+- **Connections y Studs** seleccionables en Frame, con las dimensiones y restricciones
+  declaradas. La biblioteca conserva procedencia y permite consultar referencias.
+- Instalación mediante copia para evitar el conflicto de vínculos permanentes de
+  uv con OneDrive. El lanzador Windows activa esta opción automáticamente.
 
 ## Controles del elemento
 
@@ -68,7 +69,7 @@ están las carpetas. Esta entrega contiene código y lanzador; no un instalador 
 
 ## Qué calcula y qué queda pendiente
 
-| Función | Estado en V4 |
+| Función | Estado en V5 |
 | --- | --- |
 | Transmisión aérea de 1–4 hojas isotrópicas independientes | Matrices de transferencia, flexión y amortiguamiento |
 | Cámaras de aire y absorbente poroso | Modelo Miki, con resistividad explícita |
@@ -95,17 +96,24 @@ sus modelos por otras fórmulas.
 ## Materiales y datos locales
 
 **Importar XML…** admite Material, Profile, Glazing, Floor Cover, Absorption,
-Core y Stud; conserva campos originales, unidades, identificadores y SHA-256.
-Los siete XML INSUL 10.0/8 aportados contienen **3.242 registros**. Importar un
+Core, Stud y Connection; conserva campos originales, unidades, identificadores y SHA-256.
+Los ocho XML actualizados aportados contienen **3.629 registros**. Importar un
 registro no demuestra su validez experimental ni su compatibilidad con el motor.
 El `Damping` de absorbentes no se convierte automáticamente en resistividad.
 
 La distribución pública incluye ejemplos sintéticos. El paquete personal guarda
-el catálogo compatible con V3 convertido en `local_data/catalog-v3.json`, excluido de Git y del
-paquete Python. También se reconoce `local_data/catalog.json` de V2; V3 tiene
-preferencia si ambos existen. `NOIZ_CATALOG_PATH` permite elegir otra ruta. Sin
+el catálogo en `local_data/catalog-v5.json`, los ocho XML originales en
+`local_data/xml-v5/` y un manifiesto SHA-256; están excluidos de Git y del paquete
+Python. Se reconocen también `catalog-v3.json` y `catalog.json`, en ese orden de
+preferencia después de V5. `NOIZ_CATALOG_PATH` permite elegir otra ruta. Sin
 catálogo local se usa el almacenamiento del usuario y se ofrecen ejemplos
 sintéticos para empezar. Los datos de terceros conservan sus propios derechos.
+
+Los nuevos XML no contienen enlaces legibles a drawings o BIM. Las dimensiones
+de catálogo no acreditan una sección exacta de fabricante; las geometrías sin
+verificar se identifican en la vista. Consulta la [auditoría de fuentes](docs/v5-geometry-sources.md).
+La V5 mejora la edición y visualización; no incorpora nuevos modelos acústicos
+de uniones, impacto o lluvia.
 
 ## Reproducir sin interfaz
 
@@ -142,7 +150,8 @@ La CI configura Windows y Linux; su definición no sustituye una ejecución nati
 verificada. Phonometry se instala como extra para contrastes independientes.
 
 - [Arquitectura](docs/architecture.md) y [hoja de ruta](docs/roadmap.md)
-- [Entrega V4 y comprobaciones realizadas](docs/release-v4.md) y [criterios Rw/STC](docs/v4-ratings.md)
+- [Entrega V5 y comprobaciones realizadas](docs/release-v5.md) y [criterios Rw/STC](docs/v4-ratings.md)
+- [Entrega V4 anterior](docs/release-v4.md)
 - [Entrega V3 anterior](docs/release-v3.md)
 - [Validación](docs/validation.md), [fuentes](docs/sources.md) y [revisión INSUL 10/XML](docs/v3-reference-review.md)
 - [Materiales](docs/materials.md), [reproducibilidad](docs/reproducibility.md) y [contribuciones](CONTRIBUTING.md)

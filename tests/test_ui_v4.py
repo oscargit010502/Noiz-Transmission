@@ -51,7 +51,9 @@ def test_single_prioritizes_products_and_aligns_search_thickness_quantity(window
     assert max(tops) - min(tops) <= 4
     assert window.topology_tabs.mapTo(window, QPoint(0, 0)).y() < 90
     assert not window.layer_properties.isVisible()
-    assert window.right_splitter.widget(0).height() > 2 * window.results_panel.height()
+    # V5 reserves a taller, physically square results plot; the editor remains
+    # the larger pane and preserves the original minimum of 12 product rows.
+    assert window.right_splitter.widget(0).height() > window.results_panel.height()
     window.properties_toggle.click()
     assert window.layer_name_edit.isVisible()
     window.properties_toggle.click()
@@ -84,7 +86,9 @@ def test_frame_keeps_stud_and_infill_lists_on_screen(window, app):
     for picker in (window.stud_picker, window.absorber_picker):
         listing = picker.products_list
         assert listing.isVisible()
-        assert listing.viewport().height() >= 90
+        # Both independent lists retain four complete native rows beside the
+        # taller V5 chart; scrolling exposes the remaining catalog entries.
+        assert listing.viewport().height() >= 4 * listing.sizeHintForRow(0)
     page = window.editor_stack.currentWidget()
     assert page.verticalScrollBar().maximum() == 0
     window.resize(1024, 680)

@@ -1,6 +1,6 @@
 """Lossless field import and strict local persistence for user-supplied XML.
 
-In the inspected INSUL 9.0/22 and 10.0/8 XML formats lengths are metres, density kg/m³,
+In the inspected INSUL 9.0/22, 10.0/7 and 10.0/8 XML formats lengths are metres, density kg/m³,
 and Young's modulus Pa (the desktop displays mm and GPa). SideA is the
 physical panel only for Isotropic entries. Other material types may contain
 several active constituents; their raw fields are retained without inventing
@@ -11,6 +11,7 @@ documented dimension here and is deliberately NOT a structural loss factor.
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import math
 import os
@@ -22,9 +23,10 @@ from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, fields
 from pathlib import Path
+from urllib.parse import urlsplit
 
 CATALOG_KINDS = (
-    "material", "profile", "glazing", "floor_cover", "absorption", "core", "stud",
+    "material", "profile", "glazing", "floor_cover", "absorption", "core", "stud", "connection",
 )
 _ROOTS = {
     "InsulMaterials": ("material", "Material"),
@@ -35,9 +37,10 @@ _ROOTS = {
     "InsulCore": ("core", "Material"),
     "InsulStuds": ("stud", "Stud"),
     "InsulStud": ("stud", "Stud"),
+    "InsulConnections": ("connection", "Connection"),
 }
 _MAX_BYTES = 32 * 1024 * 1024
-_INSPECTED_SCHEMAS = frozenset({("9.0", "22"), ("10.0", "8")})
+_INSPECTED_SCHEMAS = frozenset({("9.0", "22"), ("10.0", "7"), ("10.0", "8")})
 _INVALID_XML_CONTROLS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 _NUMERIC_FIELDS = frozenset({
     "Density", "YoungsModulus", "Damping", "Thickness", "PoissonsRatio", "Plateau",
@@ -46,6 +49,7 @@ _NUMERIC_FIELDS = frozenset({
     "UnderlayElasticModulus", "UnderlayDamping", "UnderlayOrthotropicRatio",
     "UnderlayPoissonsRatio", "Colour", "Texture", "UnderlayColour", "UnderlayTexture",
     "StudDepth", "StudWidth", "StudSpacing", "MaterialThickness",
+    "CavityWidth", "definedStudSpacing", "braceSpacing", "Connection",
 })
 _ALIASES = {
     "Density": "density_kg_m3", "Thickness": "thickness_m",
@@ -131,6 +135,64 @@ class CatalogSpectrum:
     verified: bool
     cover_type: str
     warnings: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CatalogReference:
+    """A source-declared web address, not independently verified documentation."""
+
+    field: str
+    url: str
+
+
+def safe_reference_url(value: str) -> str | None:
+    """Accept explicit HTTP(S) addresses only; never execute source-supplied schemes."""
+    if not isinstance(value, str) or not value or any(
+        character.isspace() or ord(character) < 32 or ord(character) == 127
+        or character in '\\<>"\''
+        for character in value
+    ):
+        return None
+    try:
+        parts = urlsplit(value)
+        if (parts.scheme.lower() not in ("http", "https") or not parts.hostname
+                or parts.username is not None or parts.password is not None):
+            return None
+        # Accessing port also rejects malformed/out-of-range numeric ports.
+        if parts.port is not None and not 1 <= parts.port <= 65535:
+            return None
+        hostname = parts.hostname.encode("idna").decode("ascii")
+        if ":" in hostname:
+            ipaddress.IPv6Address(hostname)
+        elif not all(re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?", label)
+                     for label in hostname.rstrip(".").split(".")):
+            return None
+    except (ValueError, UnicodeError):
+        return None
+    return value
+
+
+def catalog_references(entry: CatalogEntry) -> tuple[CatalogReference, ...]:
+    """Expose addresses in source fields without fetching or inferring manufacturer URLs.
+
+    The document namespace is metadata, not a product reference. Raw fields remain
+    unchanged, including malformed URLs; only usable web addresses become links.
+    """
+    references = []
+    seen: set[tuple[str, str]] = set()
+    for field, value in entry.raw_fields.items():
+        if field.startswith("$document/"):
+            continue
+        # Full-field URLs retain valid trailing punctuation in filenames. Embedded
+        # prose links stop at whitespace/markup; sentence punctuation is trimmed.
+        candidates = [value] if safe_reference_url(value) else [
+            match.rstrip(".,;)") for match in re.findall(r"https?://[^\s<>\"']+", value)
+        ]
+        for candidate in candidates:
+            if safe_reference_url(candidate) and (field, candidate) not in seen:
+                references.append(CatalogReference(field, candidate))
+                seen.add((field, candidate))
+    return tuple(references)
 
 
 class _SafeTreeBuilder(ET.TreeBuilder):
@@ -240,7 +302,7 @@ def _properties(raw: dict[str, str], kind: str, warnings: list[str]) -> dict[str
         warnings.append(
             "Tipo compuesto, perfilado o anisótropo: no sustituir por una placa homogénea SideA."
         )
-    if kind == "stud":
+    if kind in ("stud", "connection"):
         for original, target in (
             ("StudDepth", "stud_depth_m"), ("StudWidth", "stud_width_m"),
             ("StudSpacing", "stud_spacing_m"), ("MaterialThickness", "material_thickness_m"),
@@ -251,11 +313,34 @@ def _properties(raw: dict[str, str], kind: str, warnings: list[str]) -> dict[str
                 if type(value) in (int, float) and value <= 0:
                     warnings.append(f"{target}: dimensión no positiva; revisar antes de usar.")
         props["frame_material"] = {
-            "MetalFrame": "metal", "TimberFrame": "timber",
+            "MetalFrame": "metal", "TimberFrame": "timber", "MasonryFrame": "masonry",
         }.get(raw.get("Category", "").strip(), "unknown")
         props["structural_model_verified"] = False
         warnings.append(
             "Las dimensiones del montante no definen su transmisión estructural ni una unión."
+        )
+    if kind == "connection":
+        for original, target in (
+            ("CavityWidth", "cavity_width_m"),
+            ("definedStudSpacing", "defined_stud_spacing_m"),
+            ("braceSpacing", "brace_spacing_m"),
+            ("Connection", "connection_code"),
+        ):
+            if (path := f"Properties/{original}") in raw:
+                props[target] = props.get(path)
+        for path, target in (
+            ("Properties/useDefinedStudSpacing", "stud_spacing_defined"),
+            ("Properties/useDefinedStudSpacing/@isSpacingFixed", "stud_spacing_fixed"),
+            ("Properties/noAbsorption", "no_absorption_declared"),
+        ):
+            text = raw.get(path, "0").strip().casefold()
+            props[target] = text in ("-1", "1", "true")
+            if text not in ("-1", "0", "1", "true", "false", ""):
+                warnings.append(f"{path}: bandera no reconocida; se conserva el original.")
+        props["geometry_verified"] = False
+        warnings.append(
+            "La conexión conserva dimensiones y código de origen; el código no define "
+            "la geometría de clips, rieles ni herrajes del fabricante."
         )
     if kind == "floor_cover":
         props["cover_type"] = raw.get("CoverType", "").strip()
@@ -276,7 +361,7 @@ def _properties(raw: dict[str, str], kind: str, warnings: list[str]) -> dict[str
             warnings.append("Razón anisótropa distinta de 1; revisar antes del modelo isótropo.")
     props["units_schema_verified"] = (
         (props["source_version"], props["source_release"]) in _INSPECTED_SCHEMAS
-        and (kind != "stud" or props["source_version"] == "10.0")
+        and (kind not in ("stud", "connection") or props["source_version"] == "10.0")
     )
     props["solid_model_eligible"] = bool(
         kind in ("material", "glazing") and props["material_type"] == "Isotropic"
@@ -416,7 +501,7 @@ def import_xml(path: str | Path, *, repair_invalid_controls: bool = True) -> Imp
         summary.append("Se repararon controles ilegales únicamente para mostrar nombres; "
                        "SHA-256 y campos originales conservados.")
     if (root.attrib.get("Version"), root.attrib.get("Release")) not in _INSPECTED_SCHEMAS:
-        summary.append("Versión XML distinta de los esquemas inspeccionados 9.0/22 y 10.0/8; "
+        summary.append("Versión XML distinta de los esquemas inspeccionados 9.0/22, 10.0/7 y 10.0/8; "
                        "revisar unidades.")
     if not entries:
         summary.append("Archivo válido sin registros.")
@@ -606,7 +691,7 @@ def default_catalog_path() -> Path:
     """User library location, overridable for portable installations and tests."""
     if configured := os.environ.get("NOIZ_CATALOG_PATH"):
         return Path(configured).expanduser()
-    for filename in ("catalog-v3.json", "catalog.json"):
+    for filename in ("catalog-v5.json", "catalog-v3.json", "catalog.json"):
         portable = Path.cwd() / "local_data" / filename
         if portable.is_file():
             return portable
@@ -617,7 +702,7 @@ def default_catalog_path() -> Path:
         source = module.parents[2]
         checkout = source.parent
         if source.name == "src" and (checkout / "pyproject.toml").is_file():
-            for filename in ("catalog-v3.json", "catalog.json"):
+            for filename in ("catalog-v5.json", "catalog-v3.json", "catalog.json"):
                 portable = checkout / "local_data" / filename
                 if portable.is_file():
                     return portable

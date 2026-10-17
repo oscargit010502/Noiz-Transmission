@@ -1,12 +1,29 @@
 # Catálogo internacional y procedencia
 
 El catálogo objetivo es **internacional**. El proyecto público distribuye tres
-materiales sintéticos para reproducir ejemplos. La versión 3 permite importar
-bibliotecas XML del usuario y consultarlas por familia, texto, categoría,
-fabricante y región, conservando su procedencia. Importar no significa validar
+materiales sintéticos y un absorbente de ejemplo para reproducir el editor.
+Desde V3 se pueden importar bibliotecas XML del usuario y consultarlas por familia,
+texto, categoría, fabricante y región, conservando su procedencia. V5 incorpora
+una octava familia: **Connections**, sistemas de conexión y montaje. Importar no significa validar
 científicamente las propiedades ni atribuirles la licencia del código.
 
 ## Catálogos recibidos y compatibilidad
+
+Los ocho XML recibidos para **V5** contienen **3.629 registros**. Materials,
+Absorption, Connections y Flooring declaran 10.0/8; Cores, Glazing, Profile y
+Studs declaran 10.0/7. Son 3.242 entradas de las siete familias ya conocidas y
+387 conexiones. Los campos dimensionales de registros coincidentes por GUID
+se contrastaron con la revisión anterior antes de aceptar 10.0/7; no se deduce
+un cambio de unidades por la numeración de release.
+
+Las conexiones se seleccionan desde Frame junto con los montantes y conservan
+profundidad, ancho, cavidad y separaciones declaradas. `Connection` es un código
+de origen, no un objeto CAD ni una fórmula implementada en Noiz. La selección se
+guarda como registro `connection` dentro del campo de bastidor existente y no
+habilita transmisión estructural. Los proyectos mantienen el esquema 3.
+
+La tabla siguiente documenta el **catálogo histórico V3**, conservado como
+referencia de las siete familias iniciales:
 
 Los siete XML de V3 declaran `Version="10.0"`, `Release="8"`:
 
@@ -43,7 +60,7 @@ Los identificadores derivados del contenido y la posición permiten repetir una
 importación sin duplicar las mismas filas y mantener filas distintas de igual
 nombre. La persistencia local emplea JSON estricto y escritura atómica.
 
-En las estructuras inspeccionadas 9.0/22 y 10.0/8, espesor se expresa en metros, densidad en
+En las estructuras inspeccionadas 9.0/22 y 10.0/7–8, espesor se expresa en metros, densidad en
 kg/m³ y módulo de Young en Pa. El editor muestra mm y GPa cuando corresponde;
 las conversiones no cambian los valores originales conservados. Los campos de
 otras versiones necesitan revisión antes de atribuirles las mismas unidades.
@@ -84,8 +101,10 @@ exceden límites de tamaño o complejidad. No se modifica silenciosamente un nú
 La selección de archivo de biblioteca sigue este orden:
 
 1. La variable `NOIZ_CATALOG_PATH`, si está definida.
-2. `local_data/catalog.json` existente en el directorio de ejecución.
-3. Ese archivo existente en la raíz del checkout al ejecutar desde sus fuentes.
+2. En `local_data/` del directorio de ejecución: el primer archivo existente
+   entre `catalog-v5.json`, `catalog-v3.json` y `catalog.json`, en ese orden.
+3. La misma búsqueda y el mismo orden en la raíz del checkout al ejecutar desde
+   sus fuentes. No se busca por encima de una instalación en `site-packages`.
 4. La ubicación de datos del usuario: `%LOCALAPPDATA%/NoizTransmission/catalog.json`
    en Windows o `$XDG_DATA_HOME/noiz-transmission/catalog.json` en Linux, con el
    valor predeterminado `~/.local/share` para `XDG_DATA_HOME`.
@@ -99,6 +118,28 @@ contienen esos datos: revisar su procedencia antes de publicarlos como ejemplos.
 MIT cubre el código y los datos sintéticos propios. No cambia las condiciones de
 los datos importados. La importación local permanece utilizable sin publicar los
 archivos originales dentro del repositorio.
+
+## Referencias y geometría de fabricante
+
+La pestaña **Referencias** de la biblioteca presenta direcciones HTTP(S)
+declaradas explícitamente en los campos del registro. El importador no construye
+enlaces a partir del nombre del fabricante, no descarga contenidos al importar
+y no abre automáticamente esas direcciones. Los campos originales se conservan
+aunque no contengan una URL utilizable. El enlace no acredita por sí mismo que
+un documento haya sido revisado ni que corresponda a esa variante del producto.
+
+La inspección de los ocho archivos V5 encontró nombres comerciales y cotas,
+pero **cero URL legibles de planos, fichas o BIM**. Los textos opacos de Remarks
+no se interpretan como documentación geométrica. No se verificó ningún plano
+de fabricante u objeto BIM en esta entrega. La vista debe identificar como
+esquemáticos los perfiles y herrajes cuya forma no esté documentada; no completar
+labios, fijaciones o clips a partir del nombre comercial.
+
+Hay dimensiones inconsistentes en algunos registros: por ejemplo, espesores de
+chapa mayores que el ancho del montante y perfiles cuya cresta más valle supera
+el paso. Noiz conserva las cotas y sus fuentes; no corrige números suponiendo un
+decimal ausente. Véanse la auditoría y los límites de representación en
+[Geometría y procedencia V5](v5-geometry-sources.md).
 
 ## Incorporación de propiedades verificadas
 

@@ -8,8 +8,10 @@ from .examples import example_entries
 from .library import (
     CATALOG_KINDS,
     CatalogEntry,
+    CatalogReference,
     CatalogSpectrum,
     ImportResult,
+    catalog_references,
     catalog_spectrum,
     default_catalog_path,
     entry_from_dict,
@@ -17,13 +19,15 @@ from .library import (
     import_xml,
     load_catalog,
     merge_catalog,
+    safe_reference_url,
     save_catalog,
     search_entries,
 )
 
 __all__ = [
-    "CATALOG_KINDS", "CatalogEntry", "CatalogSpectrum", "ImportResult", "catalog_spectrum",
+    "CATALOG_KINDS", "CatalogEntry", "CatalogReference", "CatalogSpectrum", "ImportResult",
+    "catalog_references", "catalog_spectrum",
     "default_catalog_path",
     "entry_from_dict", "entry_to_dict", "example_entries", "import_xml", "load_catalog",
-    "merge_catalog", "save_catalog", "search_entries",
+    "merge_catalog", "safe_reference_url", "save_catalog", "search_entries",
 ]

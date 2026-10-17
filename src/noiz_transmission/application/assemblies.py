@@ -19,13 +19,15 @@ ELEMENT_PANEL_LIMITS = {"wall": 4, "ceiling": 4, "floor": 3, "roof": 2,
                         "glazing": 4, "door": 4, "porous": 1}
 
 
-def _catalog_snapshot(value: CatalogEntry | None, name: str, kind: str | None = None
+def _catalog_snapshot(value: CatalogEntry | None, name: str,
+                      kind: str | tuple[str, ...] | None = None
                       ) -> CatalogEntry | None:
     if value is None:
         return None
     if not isinstance(value, CatalogEntry):
         raise ValueError(f"{name}: se requiere un registro CatalogEntry.")
-    if kind is not None and value.kind != kind:
+    kinds = (kind,) if isinstance(kind, str) else kind
+    if kinds is not None and value.kind not in kinds:
         raise ValueError(f"{name}: se requiere la familia {kind}.")
     return entry_from_dict(entry_to_dict(value))
 
@@ -219,7 +221,9 @@ class Cavity:
         object.__setattr__(self, "absorber", _catalog_snapshot(
             self.absorber, "absorber", "absorption",
         ))
-        object.__setattr__(self, "stud", _catalog_snapshot(self.stud, "stud", "stud"))
+        # The existing snapshot slot can hold a physical Stud or a complete
+        # Connection arrangement. Their catalogue families stay distinct.
+        object.__setattr__(self, "stud", _catalog_snapshot(self.stud, "stud", ("stud", "connection")))
 
 
 @dataclass(frozen=True)

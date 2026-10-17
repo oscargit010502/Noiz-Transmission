@@ -148,7 +148,7 @@ def test_profile_uses_source_pitch_height_and_sheet_gauge(view, kind):
     assert view.rendered_envelope_mm() == pytest.approx(40.7)
     assert len(view.projected_mesh()) > 40
     all_points = [p for _, points in view.projected_mesh() for p in raw_vertices(view, points)]
-    assert max(p[2] for p in all_points) - min(p[2] for p in all_points) == pytest.approx(.0407 * 4)
+    assert max(p[2] for p in all_points) - min(p[2] for p in all_points) == pytest.approx(.0407)
     view.grab()
 
 

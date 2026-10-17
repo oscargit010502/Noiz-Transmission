@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "noiz-transmission"
-version = "0.4.0"
+version = "0.5.0"
 description = "Open, reproducible building-element sound insulation research workbench"
 readme = "README.md"
 requires-python = ">=3.13,<3.15"
@@ -29,6 +29,10 @@ packages = ["src/noiz_transmission"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+
+[tool.uv]
+# OneDrive rejects hardlinked wheel files (Windows error 396).
+link-mode = "copy"
 
 [tool.ruff]
 line-length = 100

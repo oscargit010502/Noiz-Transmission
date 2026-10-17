@@ -11,7 +11,7 @@ import platform
 import tempfile
 import warnings as python_warnings
 from collections.abc import Sequence
-from dataclasses import asdict, fields
+from dataclasses import asdict, fields, replace
 from html import escape
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -136,6 +136,37 @@ def layer_from_entry(entry: CatalogEntry) -> Layer:
         loss_factor=props.get("loss_factor"), poisson_ratio=props.get("poisson_ratio"),
         catalog_entry=entry,
     )
+
+
+def cavity_from_entry(cavity: Cavity, entry: CatalogEntry) -> Cavity:
+    """Select a Stud or Connection without guessing geometry from a product name.
+
+    The schema-3 `stud` snapshot retains its original catalogue family. A
+    Connection describes an arrangement, not a BIM mesh or a verified bridge
+    model. Undefined dimensions keep the user's existing cavity parameters.
+    Invalid combinations fail atomically instead of trimming the infill.
+    """
+    if not isinstance(entry, CatalogEntry) or entry.kind not in ("stud", "connection"):
+        raise ValueError("Seleccione un Stud o una Connection del catálogo.")
+    properties = entry.properties
+    if properties.get("units_schema_verified") is not True:
+        raise ValueError("Las unidades de este registro no están verificadas; revise su procedencia.")
+    material = properties.get("frame_material")
+    changes = {"stud": entry, "frame_type": {
+        "timber": "timber", "metal": "steel", "masonry": "masonry",
+    }.get(material, "unknown")}
+    dimensions = [("stud_width_mm", "stud_width_m"), ("stud_depth_mm", "stud_depth_m")]
+    if entry.kind == "connection":
+        dimensions.append(("depth_mm", "cavity_width_m"))
+        if properties.get("stud_spacing_defined") is True:
+            dimensions.append(("stud_spacing_mm", "defined_stud_spacing_m"))
+    else:
+        dimensions.append(("stud_spacing_mm", "stud_spacing_m"))
+    for target, source in dimensions:
+        value = properties.get(source)
+        if type(value) in (float, int) and math.isfinite(value) and value > 0:
+            changes[target] = value * 1000
+    return replace(cavity, **changes)
 
 
 def _plate(panel: Panel) -> Plate:

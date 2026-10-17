@@ -1,7 +1,7 @@
 """Original procedural 2D sections and rotatable 3D construction meshes.
 
 Coordinates are formed from the construction, not from stored product images.
-V4 uses a pinhole camera, a labelled partial view to expose the cavity, and an
+V5 uses a pinhole camera, a labelled partial view to expose the cavity, and an
 orthogonal transverse section. Metal studs are open U channels: the XML supplies
 web depth, flange width and sheet gauge, but no lip or bend geometry. Unknown
 gauge is drawn as a zero-thickness surface with an explicit notice, never as a
@@ -33,6 +33,7 @@ PALETTES = {
     "metal": ("#b5c6d0", "#708a9b"),
     "porous": ("#c5ce94", "#85945b"),
     "cover": ("#8fabb1", "#557a83"),
+    "unknown": ("#c1c4c5", "#7a8285"),
 }
 LAYER_COLORS = tuple(colors[0] for colors in PALETTES.values())
 
@@ -110,6 +111,16 @@ class SectionView(QWidget):
         self.exploded = True  # Retains the V2 API: True selects the 3D representation.
         self.selected_panel = 0
         self.opacity = 1.0
+        self.cutaway = True
+        self.depth_exaggeration = False
+        self._parts_project = None
+        self._parts_cache = ()
+        self._mesh_key = None
+        self._mesh_cache = ()
+        self._image_key = None
+        self._image_cache = None
+        self._texture_arrays = {}
+        self.render_count = 0
         self.yaw_deg = 65.0
         self.pitch_deg = 16.0
         self.zoom = 1.0
@@ -141,6 +152,21 @@ class SectionView(QWidget):
         self.setCursor(Qt.CursorShape.OpenHandCursor if checked else Qt.CursorShape.ArrowCursor)
         self.update()
 
+    def set_cutaway(self, checked: bool) -> None:
+        """Reveal the cavity without altering the saved construction."""
+        self.cutaway = bool(checked)
+        self.update()
+
+    def set_depth_exaggeration(self, checked: bool) -> None:
+        """Opt into magnified depths; real geometric proportions are the default."""
+        self.depth_exaggeration = bool(checked)
+        self.update()
+
+    def depth_scale(self) -> float:
+        if not self.depth_exaggeration or self.project is None:
+            return 1.0
+        return max(1, min(4, self.project.width_m * 150 / max(self.rendered_envelope_mm(), .001)))
+
     def set_opacity(self, opacity: float) -> None:
         if not math.isfinite(opacity) or not 0 <= opacity <= 1:
             raise ValueError("La opacidad debe estar entre 0 y 1.")
@@ -154,6 +180,13 @@ class SectionView(QWidget):
         self.update()
 
     def visible_parts(self) -> tuple[RenderPart, ...]:
+        """Cache the pieces of the immutable input snapshot."""
+        if self._parts_project is not self.project:
+            self._parts_cache = self._build_parts()
+            self._parts_project = self.project
+        return self._parts_cache
+
+    def _build_parts(self) -> tuple[RenderPart, ...]:
         """Return active physical pieces, preserving repeated boards separately."""
         project = self.project
         if project is None:
@@ -205,22 +238,26 @@ class SectionView(QWidget):
                                                  cavity.absorber_thickness_mm, panel_index,
                                                  repeat_index=number))
                         fill_depth += cavity.absorber_thickness_mm
-                if cavity.frame_type != "independent":
-                    stud_depth = min(cavity.stud_depth_mm, cavity.depth_mm)
-                    stud_width = min(cavity.stud_width_mm / 1000, project.width_m)
+                if (cavity.frame_type != "independent" and
+                        cavity.stud_depth_mm <= cavity.depth_mm and
+                        cavity.stud_width_mm / 1000 <= project.width_m):
+                    # An incompatible stud is omitted, not silently shortened.
+                    # geometry_notes explains the conflict without changing inputs.
+                    stud_depth = cavity.stud_depth_mm
+                    stud_width = cavity.stud_width_mm / 1000
                     stud_name = cavity.stud.name if cavity.stud else cavity.frame_type
                     style = material_style(stud_name, cavity.stud.category if cavity.stud else "")
                     if cavity.stud is not None:
                         frame_material = cavity.stud.properties.get("frame_material")
-                        if frame_material in ("metal", "timber"):
-                            style = "metal" if frame_material == "metal" else "wood"
+                        style = {"metal": "metal", "timber": "wood", "masonry": "masonry",
+                                 "unknown": "unknown"}.get(frame_material, style)
                     gauge = (cavity.stud.properties.get("material_thickness_m")
                              if cavity.stud is not None else None)
                     gauge_mm = gauge * 1000 if type(gauge) in (int, float) and gauge > 0 else None
                     if gauge_mm and gauge_mm * 2 >= min(stud_depth, stud_width * 1000):
                         gauge_mm = None
                     if style == "gypsum":
-                        style = "wood"
+                        style = {"timber": "wood", "steel": "metal"}.get(cavity.frame_type, "unknown")
                     spacing = cavity.stud_spacing_mm / 1000
                     # A bounded drawing avoids allocating millions of shapes for microscopic spacing.
                     n_studs = min(200, int(project.width_m / spacing) + 1)
@@ -307,10 +344,10 @@ class SectionView(QWidget):
                 polygon = QPolygonF([QPointF(x + 4 * math.sin(y / 5), y)
                                      for y in range(-4, 69, 2)])
                 painter.drawPolyline(polygon)
-        elif style in ("glass", "metal"):
+        elif style == "glass":
             for x in range(-64, 129, 22):
                 painter.drawLine(x, 0, x + 64, 64)
-        else:
+        elif style != "metal":
             # Fixed arithmetic pattern: the same construction has the same rendering.
             for i in range(80):
                 painter.drawPoint((i * 37) % 64, (i * 23 + i * i) % 64)
@@ -324,13 +361,29 @@ class SectionView(QWidget):
         notes = []
         if self.project is None:
             return ()
-        if self.exploded and len(self.project.panels) > 1:
+        if self.exploded and self.cutaway and len(self.project.panels) > 1:
             notes.append("Vista parcial: cara exterior recortada")
         studs = [part for part in self.visible_parts() if part.kind == "stud" and part.style == "metal"]
         if studs:
             notes.append("Montante U esquemático; sin labios ni radios")
             if any(part.metal_thickness_mm is None for part in studs):
                 notes.append("Espesor de metal desconocido: superficie sin espesor")
+        if any(part.kind == "stud" and part.style in ("unknown", "masonry")
+               for part in self.visible_parts()):
+            notes.append("Geometría de montante no identificada: sólo envolvente")
+        for index, cavity in enumerate(self.project.cavities):
+            if cavity.frame_type != "independent":
+                if cavity.stud_depth_mm > cavity.depth_mm:
+                    notes.insert(0, f"Frame {index + 1}: montante omitido; profundidad "
+                                 f"{cavity.stud_depth_mm:g} mm supera cámara {cavity.depth_mm:g} mm")
+                if cavity.stud_width_mm / 1000 > self.project.width_m:
+                    notes.insert(0, f"Frame {index + 1}: montante omitido; ancho "
+                                 f"{cavity.stud_width_mm:g} mm supera elemento "
+                                 f"{self.project.width_m * 1000:g} mm")
+            if cavity.stud is not None and cavity.stud.kind == "connection":
+                notes.append("Conexión: dimensiones declaradas; herrajes y posición no definidos")
+        if any(part.profile is not None for part in self.visible_parts()):
+            notes.append("Perfil paramétrico: dimensiones XML; sin detalles de fabricación")
         for panel in self.project.panels:
             for layer in panel.layers:
                 if layer.enabled and layer.profile is not None:
@@ -379,12 +432,13 @@ class SectionView(QWidget):
         label = f"{nominal:g} mm nominales"
         if not math.isclose(nominal, envelope):
             label += f" · envolvente perfilada {envelope:g} mm"
-        label += " · espesores ampliados"
+        label += (f" · profundidad ×{self.depth_scale():g}" if self.depth_exaggeration
+                  else " · proporciones reales")
         painter.setPen(QColor("#315e75"))
         painter.drawText(QRectF(6, self.height() - 46, self.width() - 12, 20),
                          Qt.AlignmentFlag.AlignCenter, label)
         note = " · ".join(self.geometry_notes())
-        self.setToolTip(note or "Espesores ampliados para lectura. Arrastra para girar; rueda para zoom.")
+        self.setToolTip(note or "Proporciones reales. Arrastra para girar; rueda para zoom.")
         painter.setPen(QColor("#738895"))
         painter.drawText(QRectF(6, self.height() - 24, self.width() - 12, 20),
                          Qt.AlignmentFlag.AlignCenter,
@@ -395,13 +449,15 @@ class SectionView(QWidget):
         """A tall narrow wall section; a floor section spans horizontally."""
         if self.project is None:
             return QRectF()
-        total = self.rendered_envelope_mm() / 1000
-        if self.horizontal:
-            extent = min(viewport.height() * .28, max(28, viewport.width() * total / self.project.width_m * 3))
-            return QRectF(viewport.left(), viewport.center().y() - extent / 2,
-                          viewport.width(), extent)
-        extent = min(viewport.width() * .28, max(28, viewport.height() * total / self.project.width_m * 3))
-        return QRectF(viewport.center().x() - extent / 2, viewport.top(), extent, viewport.height())
+        total = max(self.rendered_envelope_mm() / 1000, 1e-9) * self.depth_scale()
+        span = self.project.width_m
+        physical_width, physical_height = ((span, total) if self.horizontal else (total, span))
+        if viewport.width() / physical_width <= viewport.height() / physical_height:
+            width, height = viewport.width(), viewport.width() * physical_height / physical_width
+        else:
+            width, height = viewport.height() * physical_width / physical_height, viewport.height()
+        return QRectF(viewport.center().x() - width / 2, viewport.center().y() - height / 2,
+                      width, height)
 
     def _paint_2d(self, painter: QPainter, viewport: QRectF, parts: tuple[RenderPart, ...]) -> None:
         project = self.project
@@ -426,6 +482,10 @@ class SectionView(QWidget):
             if part.kind == "cavity":
                 painter.setBrush(QColor("#f7f9fa"))
                 painter.setPen(QPen(QColor("#b7c4c9"), .6, Qt.PenStyle.DashLine))
+                painter.drawRect(rect)
+            elif part.kind == "stud" and part.style in ("unknown", "masonry"):
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.setPen(QPen(QColor(PALETTES[part.style][1]), .8, Qt.PenStyle.DashLine))
                 painter.drawRect(rect)
             elif part.kind == "stud" and part.style == "metal":
                 # Remove the infill behind the U: no solid-metal rectangle.
@@ -521,13 +581,21 @@ class SectionView(QWidget):
         return tuple(result)
 
     def projected_mesh(self) -> tuple[tuple[RenderPart, tuple[tuple[float, float, float], ...]], ...]:
+        """Reuse projected geometry while only unrelated widgets repaint."""
+        key = (id(self.project), self.yaw_deg, self.pitch_deg, self.cutaway, self.depth_exaggeration)
+        if key != self._mesh_key:
+            self._mesh_cache = self._build_mesh()
+            self._mesh_key = key
+        return self._mesh_cache
+
+    def _build_mesh(self) -> tuple[tuple[RenderPart, tuple[tuple[float, float, float], ...]], ...]:
         """Perspective-projected prisms. U studs have three sheet prisms, not bars."""
         if self.project is None:
             return ()
         project = self.project
         parts = self.visible_parts()
         total = max(self.rendered_envelope_mm(), .001)
-        depth_enlargement = max(1, min(4, project.width_m * 150 / total))
+        depth_enlargement = self.depth_scale()
         result = []
         camera_distance = self._camera_distance()
         nearer_panel = 0 if self._rotate((0, 0, 1))[2] >= 0 else len(project.panels) - 1
@@ -551,7 +619,8 @@ class SectionView(QWidget):
             start, end = self._visual_interval(part, parts)
             x1 = part.x_m or 0
             x2 = x1 + (part.width_m if part.width_m is not None else project.width_m)
-            if len(project.panels) > 1 and part.kind == "layer" and part.panel_index == nearer_panel:
+            if (self.cutaway and len(project.panels) > 1 and part.kind == "layer"
+                    and part.panel_index == nearer_panel):
                 # A deliberate cutaway, independent of actual panel dimensions.
                 x2 = min(x2, project.width_m * .58)
             if part.kind == "stud" and part.style == "metal":
@@ -585,31 +654,28 @@ class SectionView(QWidget):
         mesh = self.projected_mesh()
         if not mesh:
             return
+        # Qt requests repaints for exposure, focus and unrelated controls. Keep
+        # the final image until camera, physical input, opacity, size or DPI changes.
+        key = (self._mesh_key, viewport.width(), viewport.height(), self.devicePixelRatioF(),
+               self.zoom, self.opacity, self._drag_position is not None)
+        if key != self._image_key:
+            self._image_cache = self._raster_image(viewport, mesh)
+            self._image_key = key
+            self.render_count += 1
+        painter.drawImage(viewport, self._image_cache)
+
+    def _raster_image(self, viewport: QRectF, mesh) -> QImage:
         all_points = [point for _, vertices in mesh for point in vertices]
         xmin, xmax = min(p[0] for p in all_points), max(p[0] for p in all_points)
         ymin, ymax = min(p[1] for p in all_points), max(p[1] for p in all_points)
         scale = min(viewport.width() / max(xmax - xmin, .001),
                     viewport.height() / max(ymax - ymin, .001)) * .94 * self.zoom
         cx, cy = (xmin + xmax) / 2, (ymin + ymax) / 2
-
-        # A per-pixel depth buffer avoids the incorrect whole-face ordering of
-        # large boards against narrow studs and infill. No OpenGL is required.
-        # Interactive preview keeps orbiting responsive, including high-DPI screens.
-        # Release always repaints the full logical-pixel resolution.
-        resolution = .45 if self._drag_position is not None else 1.0
-        scale *= resolution
-        width = max(1, int(viewport.width() * resolution))
-        height = max(1, int(viewport.height() * resolution))
-        pixels = np.full((height, width, 4), 255, dtype=np.uint8)
-        depths = np.full((height, width), np.inf, dtype=np.float32)
         distance = self._camera_distance()
         face_indices = ((0, 3, 2, 1), (4, 5, 6, 7), (0, 4, 7, 3),
                         (1, 2, 6, 5), (0, 1, 5, 4), (3, 7, 6, 2))
-        textures = {}
-        for style in {part.style for part, _ in mesh}:
-            image = self._texture(style).texture().toImage().convertToFormat(QImage.Format.Format_RGBA8888)
-            textures[style] = np.frombuffer(image.constBits(), np.uint8).reshape(64, 64, 4).copy()
         faces = []
+        transparent_area = 0.0
         for part, vertices in mesh:
             for indices in face_indices:
                 face = [vertices[i] for i in indices]
@@ -617,8 +683,6 @@ class SectionView(QWidget):
                 nz = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
                 if nz >= 0:
                     continue
-                screen = [(width / 2 + (x - cx) * scale, height / 2 + (y - cy) * scale, z)
-                          for x, y, z in face]
                 camera = [(x * (distance + z) / distance,
                            y * (distance + z) / distance, z) for x, y, z in face]
                 u = [camera[1][i] - camera[0][i] for i in range(3)]
@@ -626,13 +690,43 @@ class SectionView(QWidget):
                 nx, ny, nz = (u[1] * v[2] - u[2] * v[1],
                               u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0])
                 length = math.sqrt(nx * nx + ny * ny + nz * nz)
+                if length < 1e-14:
+                    continue
                 light_norm = math.sqrt(.35 ** 2 + .5 ** 2 + .79 ** 2)
                 shade = .42 + .58 * max(0, (-.35 * nx - .5 * ny - .79 * nz) / (length * light_norm))
-                faces.append((sum(vertex[2] for vertex in face), part, screen, shade))
-        for _, part, face, shade in sorted(faces, key=lambda item: item[0], reverse=True):
-            alpha = self.opacity * (.55 if part.style == "glass" else 1)
+                visual_alpha = (.22 if part.kind == "stud" and part.style in ("unknown", "masonry")
+                                else .55 if part.style == "glass" else 1)
+                alpha = self.opacity * visual_alpha
+                if alpha <= 0:
+                    continue
+                if alpha < 1:
+                    # Area estimate bounds the transparent fragment allocation.
+                    # Geometric vertices remain unchanged if resolution is reduced.
+                    transparent_area += abs(sum(face[i][0] * face[(i + 1) % 4][1] -
+                                                face[(i + 1) % 4][0] * face[i][1]
+                                                for i in range(4))) / 2 * scale ** 2
+                faces.append((part, face, shade, alpha))
+        resolution = (.45 if self._drag_position is not None else self.devicePixelRatioF())
+        resolution = min(resolution, math.sqrt(2_000_000 / max(1, viewport.width() * viewport.height())),
+                         math.sqrt(2_000_000 / max(1, transparent_area)))
+        self._render_resolution = resolution
+        scale *= resolution
+        width = max(1, int(viewport.width() * resolution))
+        height = max(1, int(viewport.height() * resolution))
+        pixels = np.full((height, width, 4), 255, dtype=np.uint8)
+        depths = np.full((height, width), np.inf, dtype=np.float32)
+        for style in {part.style for part, _ in mesh}:
+            if style not in self._texture_arrays:
+                texture = self._texture(style).texture().toImage().convertToFormat(QImage.Format.Format_RGBA8888)
+                self._texture_arrays[style] = np.frombuffer(texture.constBits(), np.uint8).reshape(64, 64, 4).copy()
+        # Finish all opaque surfaces first. Transparent fragments behind any
+        # opaque surface are rejected even when their mean face depth is nearer.
+        fragments = []
+        for part, face, shade, alpha in sorted(faces, key=lambda item: item[3] < 1):
+            screen = [(width / 2 + (x - cx) * scale, height / 2 + (y - cy) * scale, z)
+                      for x, y, z in face]
             for triangle in ((0, 1, 2), (0, 2, 3)):
-                a, b, c = (face[i] for i in triangle)
+                a, b, c = (screen[i] for i in triangle)
                 left = max(0, int(math.floor(min(a[0], b[0], c[0]))))
                 right = min(width, int(math.ceil(max(a[0], b[0], c[0]))))
                 top = max(0, int(math.floor(min(a[1], b[1], c[1]))))
@@ -651,18 +745,53 @@ class SectionView(QWidget):
                 w3 = 1 - w1 - w2
                 inside = (w1 >= -1e-9) & (w2 >= -1e-9) & (w3 >= -1e-9)
                 inverse_depth = w1 / (distance + a[2]) + w2 / (distance + b[2]) + w3 / (distance + c[2])
-                # Interpolate inverse distance, not camera z, under perspective.
                 candidate = np.full_like(inverse_depth, np.inf)
                 np.divide(1, inverse_depth, out=candidate, where=inside & (inverse_depth > 0))
                 target_depths = depths[top:bottom, left:right]
                 visible = inside & (candidate < target_depths - 1e-8)
                 if not np.any(visible):
                     continue
-                target_depths[visible] = candidate[visible]
-                visible_y, visible_x = np.nonzero(visible)
-                texture = textures[part.style][(visible_y + top) % 64,
-                                               (visible_x + left) % 64, :3].astype(np.float32) * shade
-                target = pixels[top:bottom, left:right, :3]
-                target[visible] = (texture * alpha + target[visible] * (1 - alpha)).astype(np.uint8)
-        image = QImage(pixels.data, width, height, width * 4, QImage.Format.Format_RGBA8888)
-        painter.drawImage(viewport, image)
+                vy, vx = np.nonzero(visible)
+                gy, gx = vy + top, vx + left
+                texture = self._texture_arrays[part.style][(gy / resolution).astype(int) % 64,
+                                                           (gx / resolution).astype(int) % 64, :3]
+                colors = texture.astype(np.float32) * shade
+                if alpha == 1:
+                    target_depths[visible] = candidate[visible]
+                    pixels[gy, gx, :3] = colors.astype(np.uint8)
+                else:
+                    fragments.append((gy * width + gx, candidate[visible], colors, alpha))
+        if fragments:
+            self._composite_fragments(pixels, fragments)
+        # Own the memory after the NumPy local leaves scope, including cached images.
+        return QImage(pixels.data, width, height, width * 4, QImage.Format.Format_RGBA8888).copy()
+
+    @staticmethod
+    def _composite_fragments(pixels: np.ndarray, fragments: list) -> None:
+        """Exact front-to-back alpha per pixel, independent of mesh/face order.
+
+        This is visual alpha compositing, not a model of optical glass. Backface
+        culling draws the visible boundary of each prism. Coincident triangle
+        edges are deduplicated so diagonal seams are not double-darkened.
+        """
+        indexes = np.concatenate([item[0] for item in fragments])
+        distances = np.concatenate([item[1] for item in fragments])
+        colors = np.concatenate([item[2] for item in fragments])
+        alphas = np.concatenate([np.full(len(item[0]), item[3], dtype=np.float64) for item in fragments])
+        order = np.lexsort((distances, indexes))
+        indexes, distances, colors, alphas = indexes[order], distances[order], colors[order], alphas[order]
+        distinct = np.ones(len(indexes), dtype=bool)
+        distinct[1:] = ((indexes[1:] != indexes[:-1]) |
+                        (np.abs(distances[1:] - distances[:-1]) > 1e-6))
+        indexes, colors, alphas = indexes[distinct], colors[distinct], alphas[distinct]
+        starts = np.r_[0, np.flatnonzero(indexes[1:] != indexes[:-1]) + 1]
+        counts = np.diff(np.r_[starts, len(indexes)])
+        log_transmission = np.log1p(-alphas)
+        exclusive = np.cumsum(log_transmission) - log_transmission
+        before = np.exp(exclusive - np.repeat(exclusive[starts], counts))
+        weights = alphas * before
+        combined = np.add.reduceat(colors * weights[:, None], starts, axis=0)
+        remaining = np.exp(np.add.reduceat(log_transmission, starts))
+        target = pixels.reshape(-1, 4)
+        selected = indexes[starts]
+        target[selected, :3] = np.clip(combined + target[selected, :3] * remaining[:, None], 0, 255).astype(np.uint8)

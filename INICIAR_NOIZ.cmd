@@ -1,6 +1,7 @@
 @echo off
 setlocal
 cd /d "%~dp0"
+set "UV_LINK_MODE=copy"
 where uv >nul 2>nul
 if errorlevel 1 (
     echo No se encontro uv. Instala uv siguiendo:
@@ -9,7 +10,7 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-echo Preparando Noiz Transmission 0.4...
+echo Preparando Noiz Transmission 0.5...
 uv sync --locked --extra desktop
 if errorlevel 1 goto error
 uv run --locked --extra desktop noiz-transmission

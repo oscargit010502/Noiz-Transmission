@@ -1,7 +1,7 @@
-# Arquitectura de Noiz Transmission 0.4.0
+# Arquitectura de Noiz Transmission 0.5.0
 
 Noiz Transmission es un banco de trabajo de escritorio para Windows, con interfaz
-PySide6 y ejecución por comandos. V3 permite componer hasta cuatro hojas, con seis
+PySide6 y ejecución por comandos. Desde V3 permite componer hasta cuatro hojas, con seis
 capas por hoja y cámaras intermedias. Calcula transmisión aérea directa de placas
 infinitas y materiales porosos; su precisión experimental para construcciones
 comerciales todavía no está determinada.
@@ -12,11 +12,11 @@ son necesarias, pero no sustituyen la validación del modelo físico.
 
 ## Cinco componentes
 
-| Componente | Responsabilidad y estado V4 |
+| Componente | Responsabilidad y estado V5 |
 | --- | --- |
-| Motor independiente | Hasta cuatro placas con masa, flexión y amortiguamiento; cámaras con gas; Miki en relleno, Facing y lámina porosa; integración energética; Rw provisional |
-| Biblioteca | XML 9.0/22 y 10.0/8 de siete familias; filtros y procedencia conservada; ejemplos sintéticos públicos |
-| Interfaz | Single/Double/Triple/Quad → Panel/Frame → Layer; productos integrados; corte 2D y 3D rotatorio; gráfica ajustable, tabla, comparación y variantes |
+| Motor independiente | Hasta cuatro placas con masa, flexión y amortiguamiento; cámaras con gas; Miki en relleno, Facing y lámina porosa; integración energética; Rw provisional y STC legado 32/8; sin nuevas ecuaciones físicas en V5 |
+| Biblioteca | XML 9.0/22 y 10.0/7–8; ocho familias, incluidas conexiones; 3.629 registros en el catálogo personal V5; filtros, referencias explícitas y procedencia conservada; ejemplos sintéticos públicos |
+| Interfaz | Single/Double/Triple/Quad → Panel/Frame → Layer; productos integrados; sección 2D y perspectiva 3D con proporciones reales, recorte y detalle opcionales; gráfica cuadrada con referencia Rw/STC y leyenda lateral; tabla, comparación y variantes |
 | Banco de validación | Verificación matemática y contraste algorítmico independiente; ensayos experimentales pendientes |
 | Documentación | Ecuaciones, ámbitos admitidos, unidades, fuentes, protocolos y comandos reproducibles |
 
@@ -51,6 +51,10 @@ los datos locales. `data/materials.json` contiene referencias sintéticas públi
 - La cámara conserva profundidad, gas, relleno, cantidad de 0 a 10, resistividad,
   tipo de bastidor y dimensiones/registro de montante. Cantidad cero excluye
   relleno del cálculo y de la vista; no elimina sus ajustes.
+- En V5, el registro de bastidor puede pertenecer a `stud` o `connection` y se
+  conserva en la misma propiedad `Cavity.stud`. Las dimensiones de una conexión
+  no verifican su geometría local ni su transmisión estructural. No se añade un
+  esquema de proyecto nuevo para guardar esa selección.
 - El JSON V3 usa `schema_version: 3`, `model_name`, `project` activo y una lista
   opcional `variants`. Cada variante tiene una combinación única de elemento y
   número de hojas, y conserva sus propios parámetros y copias de catálogo.
@@ -119,3 +123,36 @@ recalcular TL. `AssemblyPrediction.stc_db` es una propiedad calculada; el proyec
 conserva el esquema 3. CSV/HTML/JSON declaran también el procedimiento STC.
 La vista usa una cámara en perspectiva y una sección 2D; la geometría visual de
 montantes y perfiles no modifica la matriz acústica.
+
+## Presentación y catálogo V5
+
+`ui/spectrum_chart.py` dimensiona el área comprendida entre los ejes para que sea
+cuadrada en pantalla. La frecuencia sigue siendo logarítmica y TL lineal: no se
+iguala numéricamente la escala de Hz y dB. La leyenda está fuera del gráfico, a
+la derecha, con controles de visibilidad de las curvas. `fitted_reference`
+obtiene el contorno ajustado del mismo clasificador usado por el selector: Rw
+entre 100–3150 Hz o STC legado 32/8 entre 125–4000 Hz. No se extrapola el contorno
+ni se dibuja para una predicción normal, no aérea o incompleta. No se incluyen
+curvas de flancos ni límites ISO 10140. La tabla superior mantiene el promedio
+energético por octavas y mejora encabezados, contraste, alineación y legibilidad.
+
+`SectionView` usa profundidad a escala 1× de forma predeterminada. **Detalle**
+amplía visualmente el espesor e indica el factor; **Recorte** permite descubrir
+la cámara sin modificar la composición guardada. Se conservan por separado
+las piezas, la malla proyectada y la imagen rasterizada para evitar regenerarlas
+en repintados ajenos a la escena. Cámara, opacidad, tamaño o densidad de píxeles
+(DPR) invalidan la caché correspondiente. La resolución baja durante el arrastre
+y se recupera al terminar; un límite de memoria puede reducirla en escenas muy
+densas. Las transparencias se ordenan por profundidad en cada píxel.
+
+La importación de conexiones conserva cotas, códigos y campos originales sin
+traducirlos a herrajes inventados ni activar modelos acústicos no implementados.
+La biblioteca muestra las URL HTTP(S) explícitas de un registro en **Referencias**;
+solo se abren por selección del usuario. Los ocho XML recibidos no contienen URL
+legibles de planos ni BIM. Las comprobaciones y las fuentes pendientes están en
+[Geometría y procedencia V5](v5-geometry-sources.md).
+
+La selección portátil prioriza `catalog-v5.json`, después `catalog-v3.json` y
+`catalog.json`, sin sobrescribir ninguno. La variable `NOIZ_CATALOG_PATH` tiene
+prioridad sobre esa búsqueda. Véase [Catálogo internacional](materials.md) para
+las ubicaciones y la separación entre paquete público y personal.

@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import uuid
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -25,6 +27,7 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
+    QTextBrowser,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -33,9 +36,11 @@ from PySide6.QtWidgets import (
 from noiz_transmission.catalog import (
     CATALOG_KINDS,
     CatalogEntry,
+    catalog_references,
     default_catalog_path,
     import_xml,
     merge_catalog,
+    safe_reference_url,
     save_catalog,
     search_entries,
 )
@@ -43,7 +48,7 @@ from noiz_transmission.catalog import (
 KIND_NAMES = {
     "material": "Materiales", "profile": "Perfiles", "glazing": "Vidrios",
     "floor_cover": "Revestimientos", "absorption": "Absorbentes", "core": "Núcleos",
-    "stud": "Montantes",
+    "stud": "Montantes", "connection": "Conexiones / sistemas de montaje",
 }
 
 
@@ -239,8 +244,13 @@ class CatalogDialog(QDialog):
         self.raw_table.verticalHeader().hide()
         self.provenance = QTextEdit()
         self.provenance.setReadOnly(True)
+        self.reference_browser = QTextBrowser()
+        self.reference_browser.setOpenLinks(False)
+        self.reference_browser.setOpenExternalLinks(False)
+        self.reference_browser.anchorClicked.connect(self._open_reference)
         self.detail_tabs.addTab(self.property_table, "Propiedades")
         self.detail_tabs.addTab(self.provenance, "Procedencia")
+        self.detail_tabs.addTab(self.reference_browser, "Referencias")
         self.detail_tabs.addTab(self.raw_table, "Campos XML")
         layout.addWidget(self.detail_tabs, 1)
         splitter.addWidget(detail)
@@ -329,6 +339,7 @@ class CatalogDialog(QDialog):
         self.property_table.setRowCount(0)
         self.raw_table.setRowCount(0)
         self.provenance.clear()
+        self.reference_browser.clear()
 
     def _show_selection(self) -> None:
         row = self.table.currentRow()
@@ -351,6 +362,13 @@ class CatalogDialog(QDialog):
             ("anisotropic_ratio", "Relación anisótropa [−]", 1),
             ("damping_raw", "Damping XML (sin interpretar)", 1),
             ("flow_resistivity_pa_s_m2", "Resistividad [Pa·s/m²]", 1),
+            ("stud_depth_m", "Profundidad de montante [mm]", 1000),
+            ("stud_width_m", "Ancho de montante [mm]", 1000),
+            ("material_thickness_m", "Espesor de material del montante [mm]", 1000),
+            ("stud_spacing_m", "Separación de montantes [mm]", 1000),
+            ("cavity_width_m", "Ancho de cámara [mm]", 1000),
+            ("defined_stud_spacing_m", "Separación declarada [mm]", 1000),
+            ("brace_spacing_m", "Separación de arriostramiento [mm]", 1000),
         ):
             value = props.get(key)
             if type(value) in (int, float):
@@ -365,6 +383,24 @@ class CatalogDialog(QDialog):
             f"SHA-256: {entry.source_sha256}\nPaíses: {', '.join(entry.countries) or 'Sin especificar'}\n\n"
             + "\n\n".join(entry.warnings)
         )
+        references = catalog_references(entry)
+        if references:
+            self.reference_browser.setHtml(
+                "<p>Enlaces declarados en el registro de origen. Abrir un enlace no "
+                "verifica sus dimensiones ni incorpora un modelo BIM.</p>"
+                + "".join(
+                    f"<p><b>{html.escape(reference.field)}</b><br>"
+                    f'<a href="{html.escape(reference.url, quote=True)}">'
+                    f"{html.escape(reference.url)}</a></p>"
+                    for reference in references
+                )
+            )
+        else:
+            self.reference_browser.setPlainText(
+                "Este registro no contiene enlaces web utilizables a planos, fichas técnicas "
+                "u objetos BIM. El nombre y el fabricante se conservan como referencia; "
+                "no se infiere geometría de herrajes a partir del nombre del producto."
+            )
         self.use_button.setEnabled(self.selection_enabled)
         self.copy_button.setEnabled(entry.kind in ("material", "glazing")
                                     and bool(props.get("solid_model_eligible")))
@@ -375,6 +411,14 @@ class CatalogDialog(QDialog):
         for row, pair in enumerate(pairs):
             for col, value in enumerate(pair):
                 table.setItem(row, col, _cell(value))
+
+    def _open_reference(self, url: QUrl) -> None:
+        """Only an explicit click on a reference belonging to the selected record opens a browser."""
+        candidate = url.toString(QUrl.ComponentFormattingOption.FullyEncoded)
+        if (self.selected_entry is not None and safe_reference_url(candidate)
+                and any(url == QUrl(reference.url) for reference in
+                        catalog_references(self.selected_entry))):
+            QDesktopServices.openUrl(url)
 
     def _accept_selection(self, *_args) -> None:
         if self.selection_enabled and self.selected_entry is not None:

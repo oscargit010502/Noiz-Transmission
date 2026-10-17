@@ -1,11 +1,17 @@
 # Documentación técnica
 
-Noiz Transmission **0.4.0** permite editar hasta cuatro hojas, conservar variantes,
-importar las siete familias XML y calcular transmisión aérea ideal de placas,
+Noiz Transmission **0.5.0** permite editar hasta cuatro hojas, conservar variantes,
+importar ocho familias XML —incluidas conexiones— y calcular transmisión aérea ideal de placas,
 cámaras con gas y materiales porosos. Incluye Facing, vista 3D rotatoria, corte 2D
 y resumen por octavas. Impacto, lluvia, conexiones estructurales y Gomperts/Mechel
 conservan configuración pero todavía no disponen de predicción. La precisión
 experimental de sistemas comerciales sigue pendiente de evaluación.
+
+V5 actualiza el catálogo personal a 3.629 registros y mejora la representación
+con proporciones reales, recorte y detalle opcionales. La gráfica tiene área
+cuadrada, leyenda a la derecha y el contorno ajustado de referencia Rw o STC.
+Estas mejoras no incorporan modelos físicos nuevos ni planos de fabricante/BIM
+verificados; se conserva el esquema 3 de proyectos.
 
 - [Arquitectura y cinco componentes](architecture.md).
 - [Ecuaciones, bandas, supuestos y límites V1–V4](theory.md).
@@ -21,3 +27,5 @@ experimental de sistemas comerciales sigue pendiente de evaluación.
 
 - [Entrega V4: interfaz compacta, visualización y comprobaciones](release-v4.md).
 - [Selector Rw/STC y alcance de los índices de impacto](v4-ratings.md).
+- [Entrega V5: geometría, catálogo y presentación de resultados](release-v5.md).
+- [Geometría y procedencia V5: cotas XML y fuentes comprobadas](v5-geometry-sources.md).
