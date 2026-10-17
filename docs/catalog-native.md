@@ -52,6 +52,6 @@ también el inicio desde el wheel instalado fuera del repositorio.
 
 Comprobación de esta actualización: **675 pruebas aprobadas con `-W error`**,
 Ruff y `git diff --check` correctos. Wheel 0.5.1 instalado fuera del checkout:
-inicio Qt con usuario nuevo, 3.629 entradas, 1.700 productos de panel, 456 entradas
+inicio Qt con usuario nuevo, 3.629 entradas, 1.575 productos en Wall, 456 entradas
 de Frame y 523 absorbentes, sin archivo local de biblioteca ni importación.
 Verificado en Linux/Qt offscreen; la ejecución nativa de Windows queda pendiente.
