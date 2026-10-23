@@ -91,7 +91,11 @@ from noiz_transmission.ui.settings_editors import (
     PorousEditor,
     RainfallEditor,
 )
-from noiz_transmission.ui.spectrum_chart import SquareSpectrumChart, fitted_reference
+from noiz_transmission.ui.spectrum_chart import (
+    ReadOnlyViewBox,
+    SquareSpectrumChart,
+    fitted_reference,
+)
 from noiz_transmission.ui.style import STYLESHEET
 
 COLORS = ("#007c99", "#b87328", "#7868ac", "#48866f", "#b8596b", "#4d82bd")
@@ -124,7 +128,8 @@ def table(headers: list[str]) -> QTableWidget:
     widget.setAlternatingRowColors(True)
     widget.setWordWrap(False)
     widget.verticalHeader().hide()
-    widget.verticalHeader().setDefaultSectionSize(29)
+    widget.verticalHeader().setMinimumSectionSize(1)
+    widget.verticalHeader().setDefaultSectionSize(widget.fontMetrics().height() + 4)
     widget.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
     widget.horizontalHeader().setStretchLastSection(True)
     return widget
@@ -229,7 +234,7 @@ class MainWindow(QMainWindow):
         self.resize(1366, 768)
         self.setMinimumSize(1024, 620)
         compact_font = QFont(self.font())
-        compact_font.setPointSizeF(9)
+        compact_font.setPointSizeF(8.5)
         self.setFont(compact_font)
         self.setStyleSheet(STYLESHEET)
         self._build_actions()
@@ -253,11 +258,11 @@ class MainWindow(QMainWindow):
         self.right_splitter.addWidget(self.results_panel)
         self.right_splitter.setStretchFactor(0, 3)
         self.right_splitter.setStretchFactor(1, 2)
-        self.right_splitter.setSizes([420, 290])
+        self.right_splitter.setSizes([385, 325])
         self.main_splitter.addWidget(self.right_splitter)
-        self.main_splitter.setStretchFactor(0, 1)
+        self.main_splitter.setStretchFactor(0, 2)
         self.main_splitter.setStretchFactor(1, 3)
-        self.main_splitter.setSizes([450, 820])
+        self.main_splitter.setSizes([510, 760])
         body.addWidget(self.main_splitter, 1)
         root.addLayout(body, 1)
         self.setCentralWidget(content)
@@ -267,6 +272,8 @@ class MainWindow(QMainWindow):
         self.progress.setMaximumHeight(4)
         self.progress.hide()
         self.statusBar().addPermanentWidget(self.progress)
+        self.statusBar().addPermanentWidget(self.library_label)
+        self.library_label.show()
         self._render_project()
         self.statusBar().showMessage("Listo · Edita la composición y calcula el aislamiento aéreo.")
         if catalog_error:
@@ -457,7 +464,7 @@ class MainWindow(QMainWindow):
         reset.clicked.connect(self._reset_view)
         layout.addWidget(reset)
         layout.addStretch()
-        layout.addWidget(label("Noiz V6", "muted"))
+        layout.addWidget(label("Noiz V6.1", "muted"))
         return side
 
     def _construction(self) -> QWidget:
@@ -557,10 +564,10 @@ class MainWindow(QMainWindow):
         self.message_label = label("Configura el elemento y pulsa Calcular", "status")
         self.message_label.setMinimumWidth(0)
         self.message_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
-        layout.addWidget(self.message_label)
         controls = QHBoxLayout()
+        controls.setSpacing(3)
         self.library_label = label("", "muted")
-        controls.addWidget(self.library_label, 1)
+        controls.addWidget(self.message_label, 1)
         self.toggle_results_button = QPushButton("Ocultar gráfica")
         self.toggle_results_button.clicked.connect(self.toggle_results)
         controls.addWidget(self.toggle_results_button)
@@ -781,7 +788,8 @@ class MainWindow(QMainWindow):
             controls.addWidget(label(title))
             controls.addWidget(field)
         layout.addLayout(controls)
-        dimensions = QHBoxLayout()
+        self.stud_picker = ProductPicker(self.entries, kind=("connection", "stud"))
+        dimensions = self.stud_picker.search_row
         dimensions.setSpacing(3)
         for title, key in (("Stud ancho mm", "stud_width_mm"), ("Stud fondo mm", "stud_depth_mm")):
             field = spin(.01, 10000, decimals=3)
@@ -791,9 +799,6 @@ class MainWindow(QMainWindow):
             self.cavity_fields[key] = field
             dimensions.addWidget(label(title))
             dimensions.addWidget(field)
-        dimensions.addStretch(1)
-        layout.addLayout(dimensions)
-        self.stud_picker = ProductPicker(self.entries, kind=("connection", "stud"))
         self.stud_picker.search_edit.setPlaceholderText("Buscar Connections / Studs · nombre, categoría o fabricante")
         self.stud_picker.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
         self.stud_picker.setMinimumHeight(95)
@@ -804,7 +809,6 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.stud_picker, 1)
         self.frame_note = label("", "muted")
         self.frame_note.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
-        layout.addWidget(self.frame_note)
         self.absorber_picker = ProductPicker(self.entries, kind="absorption")
         self.absorber_picker.entrySelected.connect(self._select_absorber_entry)
         self.absorber_picker.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
@@ -826,6 +830,7 @@ class MainWindow(QMainWindow):
         self.absorber_count_spin.setRange(0, 10)
         self.absorber_count_spin.setValue(1)
         self.absorber_count_spin.setMaximumWidth(48)
+        self.absorber_count_spin.setToolTip("Qty 0 excluye el relleno del cálculo y de la vista.")
         self.absorber_count_spin.valueChanged.connect(lambda value: self._set_cavity_field("absorber_count", value))
         row.addWidget(self.absorber_count_spin)
         layout.addWidget(self.absorber_picker, 1)
@@ -837,7 +842,7 @@ class MainWindow(QMainWindow):
         self.resistivity_spin.setSpecialValueText("Sin dato")
         self.resistivity_spin.valueChanged.connect(lambda value: self._set_cavity_field("flow_resistivity_pa_s_m2", value or None))
         sigma.addWidget(self.resistivity_spin)
-        sigma.addWidget(label("Qty 0 excluye el relleno.", "muted"), 1)
+        sigma.addWidget(self.frame_note, 1)
         layout.addLayout(sigma)
         return widget
 
@@ -910,7 +915,9 @@ class MainWindow(QMainWindow):
         floor_layout.setContentsMargins(4, 4, 4, 4)
         self.floor_spectrum_note = label("Selecciona un Floor cover", "muted", True)
         floor_layout.addWidget(self.floor_spectrum_note)
-        self.floor_chart = pg.PlotWidget(background="#ffffff")
+        self.floor_chart = pg.PlotWidget(background="#ffffff", viewBox=ReadOnlyViewBox())
+        self.floor_chart.getPlotItem().hideButtons()
+        self.floor_chart.getPlotItem().setMenuEnabled(False)
         self.floor_chart.setLabel("bottom", "Frecuencia [Hz]")
         self.floor_chart.setLabel("left", "ΔL declarado [dB]")
         self.floor_chart.setLogMode(x=True)
@@ -1832,8 +1839,8 @@ class MainWindow(QMainWindow):
         self.results_panel.show()
         self.results_action.setChecked(True)
         self.toggle_results_button.setText("Ocultar gráfica")
-        self.main_splitter.setSizes([450, 820])
-        self.right_splitter.setSizes([420, 290])
+        self.main_splitter.setSizes([510, 760])
+        self.right_splitter.setSizes([385, 325])
 
     def _editor_has_changes(self) -> bool:
         return (bool(self._input_error) or self.project != self._saved_project
@@ -2030,7 +2037,9 @@ def run() -> int:
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("Noiz Transmission")
     app.setOrganizationName("Noiz Transmission")
-    app.setFont(QFont("Segoe UI", 9))
+    app_font = QFont("Segoe UI")
+    app_font.setPointSizeF(8.5)
+    app.setFont(app_font)
     window = MainWindow()
     window.show()
     return app.exec()

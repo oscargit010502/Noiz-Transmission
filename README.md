@@ -4,7 +4,7 @@ Aplicación open source de escritorio para estudiar el aislamiento acústico de
 **elementos constructivos**, con motor físico independiente, materiales con
 procedencia y resultados reproducibles. Python, PySide6, NumPy, SciPy y PyQtGraph.
 
-**Versión 0.6.0 · tamaño finito y cálculo optimizado · prototipo científico.** Los **3.629 registros**
+**Versión 0.6.1 · interfaz compacta y gráfico de consulta · prototipo científico.** Los **3.629 registros**
 ya vienen incluidos en la descarga de GitHub y aparecen al iniciar, sin importar XML.
 Se conservan las mejoras de V5 en la vista en perspectiva y
 el corte 2D con proporciones reales, recorte opcional y transparencia por profundidad.
@@ -13,12 +13,12 @@ referencia ajustada Rw o STC. Incorpora los ocho catálogos actualizados, inclui
 las conexiones. La exactitud respecto a sistemas comerciales todavía
 requiere validación experimental; los resultados no equivalen a un ensayo.
 
-![Editor V6 con catálogo integrado, cálculo finito y curva de referencia Rw](docs/images/workbench-v6.png)
+![Editor V6.1 con controles compactos y curva de referencia Rw](docs/images/workbench-v6.1.png)
 
 ## Descargar y abrir
 
-El código V6 está en la rama
-[`codex/noiz-transmission-v6`](https://github.com/oscargit010502/Noiz-Transmission/tree/codex/noiz-transmission-v6).
+El código V6.1 está en la rama
+[`codex/noiz-transmission-v6-1`](https://github.com/oscargit010502/Noiz-Transmission/tree/codex/noiz-transmission-v6-1).
 Selecciona esa rama y usa **Code → Download ZIP**. Extrae el ZIP, instala [uv](https://docs.astral.sh/uv/getting-started/installation/)
 y ejecuta **`INICIAR_NOIZ.cmd`** en Windows. Desde la carpeta del proyecto:
 
@@ -31,7 +31,20 @@ La primera ejecución descarga Python 3.13 y dependencias si faltan. La
 [guía de Windows](PROBAR_EN_WINDOWS.md) explica cómo probar cada control y dónde
 están las carpetas. Esta entrega contiene código y lanzador; no un instalador `.exe`.
 
-## Cambios en V6
+## Cambios en V6.1
+
+- Controles nativos grises y azules, texto compacto y listas de productos de 8 pt.
+- Dimensiones del montante junto al buscador; avisos agrupados y más espacio para
+  listas y resultados. El contador de productos comparte la cabecera de la lista.
+- Gráficos sin zoom, desplazamiento ni menú para modificar ejes. La aplicación
+  ajusta las escalas al calcular; la leyenda conserva las casillas de visibilidad.
+- Se mantienen el gráfico cuadrado, las referencias Rw/STC y el catálogo integrado.
+
+Esta actualización modifica la interfaz; conserva el motor y las limitaciones
+acústicas de V6, incluidos los puentes estructurales por montantes pendientes.
+Consulta las [notas de V6.1](docs/release-v6.1.md).
+
+## Modelo incorporado en V6
 
 - Modo de tamaño finito para **Single, Double, Triple y Quad** de hojas
   independientes. La integración difusa usa el límite angular dependiente de

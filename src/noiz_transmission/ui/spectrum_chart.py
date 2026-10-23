@@ -135,7 +135,7 @@ class SpectrumLegend(QScrollArea):
         title.setWordWrap(True)
         title.setMinimumWidth(0)
         title.setToolTip(tooltip or text)
-        layout.addWidget(title, 1)
+        layout.addWidget(title, 1, Qt.AlignmentFlag.AlignTop)
         self.rows.insertWidget(self.rows.count() - 1, row)
         self.items.append((trace, title))
         self._fit_rows()
@@ -154,6 +154,33 @@ class SpectrumLegend(QScrollArea):
         self.rows.activate()
 
 
+class ReadOnlyViewBox(pg.ViewBox):
+    """Display calculation ranges without offering user pan or zoom controls.
+
+    Keep ``setRange`` / ``autoRange`` available to the application. Blocking the
+    event handlers also covers drags and wheel events forwarded by AxisItem,
+    and prevents rectangle zoom or keyboard history from bypassing the lock.
+    """
+
+    def __init__(self, *args, **kwargs):
+        kwargs["enableMenu"] = False
+        super().__init__(*args, **kwargs)
+        self.setMouseEnabled(x=False, y=False)
+
+    def wheelEvent(self, event, axis=None):
+        event.accept()
+
+    def mouseDragEvent(self, event, axis=None):
+        event.accept()
+
+    def mouseClickEvent(self, event):
+        event.accept()
+
+    def keyPressEvent(self, event):
+        # Window shortcuts remain available; plot zoom history is not exposed.
+        event.ignore()
+
+
 class SquareSpectrumChart(QWidget):
     """Lay out a square ViewBox and a legend outside the axes, on their right."""
 
@@ -165,7 +192,9 @@ class SquareSpectrumChart(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumSize(290, 100)
-        self.plot_widget = pg.PlotWidget(self, background="#ffffff")
+        self.plot_widget = pg.PlotWidget(self, background="#ffffff", viewBox=ReadOnlyViewBox())
+        self.plot_widget.setAccessibleName("Espectro de aislamiento; escala automática sin zoom")
+        self.plot_widget.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.plot = self.plot_widget.getPlotItem()
         self.plot.layout.setContentsMargins(0, 0, 0, 0)
         self.plot.layout.setSpacing(0)

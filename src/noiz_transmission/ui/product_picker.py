@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -12,11 +13,20 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QSplitter,
+    QStyledItemDelegate,
     QVBoxLayout,
     QWidget,
 )
 
 from noiz_transmission.catalog import CatalogEntry, search_entries
+
+
+class CompactProductDelegate(QStyledItemDelegate):
+    """Keep native painting and selection with DPI-aware, single-line rows."""
+
+    def sizeHint(self, option, index):
+        size = super().sizeHint(option, index)
+        return QSize(size.width(), option.fontMetrics.height() + 2)
 
 
 class ProductPicker(QWidget):
@@ -31,6 +41,8 @@ class ProductPicker(QWidget):
         self._selected_entry: CatalogEntry | None = None
         self._refreshing = False
         self._by_id: dict[str, CatalogEntry] = {}
+        self.count_label = QLabel()
+        self.count_label.setObjectName("muted")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(2)
@@ -57,12 +69,22 @@ class ProductPicker(QWidget):
             column.setSpacing(1)
             heading = QLabel(title)
             heading.setObjectName("pickerHeading")
-            column.addWidget(heading)
+            headings = QHBoxLayout()
+            headings.setContentsMargins(0, 0, 0, 0)
+            headings.addWidget(heading)
+            if widget is self.products_list:
+                headings.addWidget(self.count_label, 1, Qt.AlignmentFlag.AlignRight)
+            column.addLayout(headings)
             widget.setAccessibleName(title)
             widget.setMinimumHeight(100)
             widget.setMinimumWidth(80)
             widget.setAlternatingRowColors(True)
             widget.setUniformItemSizes(True)
+            compact_font = QFont(widget.font())
+            compact_font.setPointSizeF(8)
+            widget.setFont(compact_font)
+            widget.setItemDelegate(CompactProductDelegate(widget))
+            widget.setSpacing(0)
             widget.setTextElideMode(Qt.TextElideMode.ElideRight)
             column.addWidget(widget)
             self.splitter.addWidget(container)
@@ -71,9 +93,6 @@ class ProductPicker(QWidget):
         self.splitter.setStretchFactor(2, 1)
         self.splitter.setSizes([460, 160, 170])
         layout.addWidget(self.splitter, 1)
-        self.count_label = QLabel()
-        self.count_label.setObjectName("muted")
-        layout.addWidget(self.count_label)
         self.search_edit.textChanged.connect(self._refresh_products)
         self.category_list.currentItemChanged.connect(self._refresh_products)
         self.manufacturer_list.currentItemChanged.connect(self._refresh_products)
@@ -157,7 +176,8 @@ class ProductPicker(QWidget):
             self.products_list.setCurrentRow(selected_row)
             self.products_list.blockSignals(False)
             note = " · selección actual fuera del filtro" if selected_id and selected_row < 0 else ""
-            self.count_label.setText(f"{len(matches):,} productos{note}")
+            self.count_label.setText(f"{len(matches):,}" + (" · fuera del filtro" if note else ""))
+            self.count_label.setToolTip(f"{len(matches):,} productos{note}")
         finally:
             self._refreshing = False
 

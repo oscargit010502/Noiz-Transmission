@@ -1,11 +1,11 @@
-# Probar Noiz Transmission V6 en Windows
+# Probar Noiz Transmission V6.1 en Windows
 
 La ventana se abre en tu ordenador. Esta entrega contiene código y un lanzador
 `.cmd`; todavía no contiene un instalador `.exe`.
 
 ## Descargar y abrir
 
-1. Descarga el [ZIP V6 desde GitHub](https://github.com/oscargit010502/Noiz-Transmission/archive/refs/heads/codex/noiz-transmission-v6.zip)
+1. Descarga el [ZIP V6.1 desde GitHub](https://github.com/oscargit010502/Noiz-Transmission/archive/refs/heads/codex/noiz-transmission-v6-1.zip)
    y selecciona **Extraer todo**. La carpeta del proyecto debe contener `INICIAR_NOIZ.cmd`, `pyproject.toml`,
    `uv.lock`, `examples` y `src`. Usa una carpeta nueva para conservar tus versiones anteriores.
 2. Instala **uv** siguiendo sus
@@ -60,7 +60,11 @@ guarda una copia. Los archivos nuevos usan esquema 4; V5 no puede leer ese esque
 La corrección verificada es Davy, no Sewell. No hay todavía una tolerancia
 experimental demostrada para Noiz; consulta [evidencia V6](docs/v6-evidence.md).
 
-## Interfaz conservada de V5
+## Interfaz V6.1
+
+Los controles y las listas ocupan menos espacio vertical. El gráfico no permite
+zoom, desplazamiento ni cambios manuales de ejes; el programa ajusta las escalas
+al calcular. Las casillas de la leyenda permiten ocultar y mostrar curvas.
 
 El gráfico conserva ejes de igual longitud, incluso al cambiar su tamaño, y
 muestra las leyendas a la derecha. El selector **Rw / STC** cambia el índice y

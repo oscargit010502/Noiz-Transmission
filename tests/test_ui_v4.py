@@ -17,6 +17,7 @@ from PySide6.QtCore import QEvent, QPoint
 from PySide6.QtWidgets import QApplication
 
 from noiz_transmission.application.assemblies import AssemblyPrediction
+from noiz_transmission.catalog import bundled_entries
 from noiz_transmission.ui.main_window import MainWindow
 
 
@@ -82,13 +83,17 @@ def test_octave_header_and_value_row_are_fully_visible(window, app, width):
 def test_frame_keeps_stud_and_infill_lists_on_screen(window, app):
     window.topology_tabs.setCurrentIndex(1)
     window.part_tabs.setCurrentIndex(1)
+    # Use real populated lists: an empty list returns -1 as its row size.
+    for picker in (window.stud_picker, window.absorber_picker):
+        picker.set_entries(bundled_entries())
     app.processEvents()
     for picker in (window.stud_picker, window.absorber_picker):
         listing = picker.products_list
         assert listing.isVisible()
-        # Both independent lists retain four complete native rows beside the
-        # taller V5 chart; scrolling exposes the remaining catalog entries.
-        assert listing.viewport().height() >= 4 * listing.sizeHintForRow(0)
+        # V6.1 groups the controls to retain at least five complete rows
+        # in both lists at 1366 x 768, alongside the larger chart.
+        assert listing.viewport().height() >= 5 * listing.sizeHintForRow(0)
+        assert listing.sizeHintForRow(0) >= listing.fontMetrics().height()
     page = window.editor_stack.currentWidget()
     assert page.verticalScrollBar().maximum() == 0
     window.resize(1024, 680)
