@@ -44,6 +44,8 @@ def fitted_reference(prediction: AssemblyPrediction, rating: str):
         return None
     try:
         if rating == "rw":
+            if prediction.rw_db is None or prediction.rating_unavailable_reason("rw"):
+                return None
             selected = [(frequency, value) for frequency, value in
                         zip(prediction.frequencies_hz, prediction.tl_db, strict=True)
                         if frequency in ISO717_FREQUENCIES_HZ]
@@ -51,6 +53,8 @@ def fitted_reference(prediction: AssemblyPrediction, rating: str):
             return (ISO717_FREQUENCIES_HZ, result.reference_curve_db,
                     f"Rw {result.rw_db} dB · referencia", "ISO 717-1 · 100–3150 Hz")
         if rating == "stc":
+            if prediction.stc_db is None or prediction.rating_unavailable_reason("stc"):
+                return None
             result = legacy_stc(prediction.frequencies_hz, prediction.tl_db)
             return (STC_FREQUENCIES_HZ, result.reference_curve_db,
                     f"STC {result.stc} · referencia", "STC orientativo · método legado 32/8 · 125–4000 Hz")

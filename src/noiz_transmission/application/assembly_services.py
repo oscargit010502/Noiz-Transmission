@@ -1,4 +1,4 @@
-"""Reproducible prediction, strict V3 workspaces and offline reports."""
+"""Reproducible prediction, strict V4 workspaces and offline reports."""
 
 from __future__ import annotations
 
@@ -41,6 +41,7 @@ from noiz_transmission.application.materials import (
 )
 from noiz_transmission.application.services import Project, load_project
 from noiz_transmission.catalog import CatalogEntry, entry_from_dict, entry_to_dict
+from noiz_transmission.core.finite_panel import FINITE_MODEL_ID, FinitePanel
 from noiz_transmission.core.ratings import ISO717_FREQUENCIES_HZ, STC_PROCEDURE, iso717_rw
 from noiz_transmission.core.transfer import (
     MODEL_ID,
@@ -51,7 +52,7 @@ from noiz_transmission.core.transfer import (
     predict_multilayer,
 )
 
-PROJECT_SCHEMA_VERSION = 3
+PROJECT_SCHEMA_VERSION = 4
 _MAX_BYTES = 32 * 1024 * 1024
 
 
@@ -107,6 +108,22 @@ def default_project_v3(element_type: str = "wall") -> AssemblyProject:
 
 
 default_single_project = default_project_v3
+
+
+def default_project_v6(element_type: str = "wall") -> AssemblyProject:
+    """New workbench projects explicitly select the documented finite approximation.
+
+    A free porous slab has no bending plate or plate-edge losses, so its existing
+    model remains selected. No boundary loss is guessed for a new solid panel.
+    """
+    return replace(default_project_v3(element_type),
+                   calculation_model="infinite" if element_type == "porous" else "finite")
+
+
+def model_name_for_project(project: AssemblyProject) -> str:
+    """The actual acoustic model, independently of the project container schema."""
+    return (FINITE_MODEL_ID if project.calculation_model == "finite"
+            and project.element_type != "porous" else MODEL_ID)
 
 
 def _eligible_entry(entry: CatalogEntry) -> None:
@@ -169,7 +186,7 @@ def cavity_from_entry(cavity: Cavity, entry: CatalogEntry) -> Cavity:
     return replace(cavity, **changes)
 
 
-def _plate(panel: Panel) -> Plate:
+def _plate(panel: Panel, project: AssemblyProject | None = None) -> Plate:
     mass, stiffness, damped_stiffness = 0.0, 0.0, 0.0
     try:
         for layer in panel.layers:
@@ -182,7 +199,9 @@ def _plate(panel: Panel) -> Plate:
             )
             stiffness += rigidity
             damped_stiffness += rigidity * layer.loss_factor
-        return Plate(mass, stiffness, damped_stiffness / stiffness)
+        size = (FinitePanel(project.width_m, project.height_m, panel.edge_loss_factor)
+                if project is not None and project.calculation_model == "finite" else None)
+        return Plate(mass, stiffness, damped_stiffness / stiffness, finite_size=size)
     except (OverflowError, ZeroDivisionError) as exc:
         raise ValueError("Propiedades de placa fuera del intervalo numérico representable.") from exc
 
@@ -283,6 +302,10 @@ def predict_assembly(project: AssemblyProject, *, cancel_event: Event | None = N
     if project.floor_cover is not None:
         raise ValueError("El revestimiento de suelo requiere un modelo validado de impacto; "
                          "retírelo para calcular únicamente transmisión aérea.")
+    if (project.calculation_model == "infinite"
+            and any(panel.edge_loss_factor for panel in project.panels)):
+        raise ValueError("El modelo histórico infinito requiere η de borde adicional igual a 0. "
+                         "Seleccione el modelo finito V6 para aplicar estas pérdidas.")
     warnings = [
         "Modelo exploratorio de placas isotrópicas delgadas e infinitas y cámaras selladas; "
         "no equivale al algoritmo INSUL ni dispone de validación experimental completa.",
@@ -362,7 +385,54 @@ def predict_assembly(project: AssemblyProject, *, cancel_event: Event | None = N
                 warnings.append(f"Cámara {index}: {cavity.gas} ideal puro a 20 °C y 101325 Pa; "
                                 "no se consideran mezclas ni pérdidas térmicas en paredes.")
             gaps.append(Gap(cavity.depth_mm / 1000, sigma, thickness / 1000, **gas_kwargs))
-        plates = tuple(_plate(panel) for panel in project.panels)
+        plates = tuple(_plate(panel, project) for panel in project.panels)
+        if project.calculation_model == "finite":
+            warnings = [warning for warning in warnings if not warning.startswith((
+                "Modelo exploratorio de placas", "Anchura y altura se conservan",
+            ))]
+            warnings[:0] = [
+                "V6: placas isotrópicas con aproximación angular de tamaño finito de Davy "
+                "(Hansen et al., 6.ª ed., ecuaciones 7.56–7.57); no es una solución modal "
+                "de placa finita ni el algoritmo INSUL. Precisión experimental no cuantificada.",
+                f"Dimensiones acústicas: {project.width_m:g} × {project.height_m:g} m. "
+                "En campo difuso el límite angular depende de frecuencia, área y perímetro; "
+                "se limita también al ángulo máximo del proyecto y no se renormaliza la "
+                "potencia por el intervalo angular finito.",
+                "Pérdidas de borde: η adicional explícita por panel, sumada a η de material. "
+                "No se deduce del XML ni se asigna un valor universal; use 0 si el factor "
+                "de material ya incluye el montaje para evitar doble conteo.",
+            ]
+            if len(plates) > 1:
+                warnings.append("Double/Triple/Quad: extensión propia del corte angular finito "
+                                "a la cadena de matrices de hojas mecánicamente independientes. "
+                                "No es el modelo publicado de pared doble de Davy ni incluye "
+                                "puentes por montantes; no dispone de validación experimental.")
+            if project.incidence == "normal":
+                warnings.append("Incidencia normal V6: no se aplica el corte angular difuso; "
+                                "ancho y alto solo informan el diagnóstico f₁₁. Con número de "
+                                "onda tangencial cero tampoco actúan las pérdidas de flexión "
+                                "de material o borde. No se representan la rigidez de apoyo "
+                                "ni modos de baja frecuencia.")
+            for index, plate in enumerate(plates, 1):
+                first_mode = plate.finite_size.first_mode_hz(
+                    plate.mass_kg_m2, plate.bending_stiffness_nm,
+                )
+                warnings.append(f"Panel {index}: f₁₁ = {first_mode:.6g} Hz, diagnóstico "
+                                "para placa simplemente apoyada; no es una resonancia modal "
+                                "resuelta por el motor. η de borde adicional = "
+                                f"{project.panels[index - 1].edge_loss_factor:g}.")
+                # Exact base-10 lower band edges, not nominal centres, determine
+                # whether any part of a reported third octave is outside range.
+                from noiz_transmission.core.transfer import EXACT_BAND_CENTRES_HZ
+
+                outside = [f"{nominal:g}" for nominal, centre in zip(
+                    NOMINAL_BANDS_HZ, EXACT_BAND_CENTRES_HZ, strict=True,
+                ) if centre * 10 ** (-1 / 20) < 1.5 * first_mode]
+                if outside:
+                    warnings.append(f"Panel {index}: bandas {', '.join(outside)} Hz "
+                                    "parcial o totalmente por debajo de 1.5 f₁₁. La "
+                                    "aproximación angular no resuelve la región controlada "
+                                    "por rigidez y sus resonancias: resultados extrapolados.")
     if project.cavities:
         warnings.append("Las dimensiones de montantes son metadatos: las hojas se consideran "
                         "mecánicamente independientes. f₀ es un diagnóstico de masas/muelles "
@@ -399,13 +469,19 @@ def predict_assembly(project: AssemblyProject, *, cancel_event: Event | None = N
                         "Esta aproximación no es Gomperts ni Mechel.")
     rw = None
     if project.incidence == "diffuse":
-        selected = [float(value) for frequency, value in zip(frequencies, tl, strict=True)
-                    if frequency in ISO717_FREQUENCIES_HZ]
-        rw = iso717_rw(ISO717_FREQUENCIES_HZ, selected).rw_db
-        warnings.append("Rw orientativo calculado con 100–3150 Hz mediante ISO 717-1; "
-                        "procedimiento provisional pendiente de revisión normativa. "
-                        "No constituye un ensayo ni una certificación.")
-        warnings.append("STC orientativo: procedimiento legado 32/8, 125–4000 Hz, "
+        rw_reason = project.rating_unavailable_reason("rw")
+        stc_reason = project.rating_unavailable_reason("stc")
+        if rw_reason:
+            warnings.append(rw_reason)
+        else:
+            selected = [float(value) for frequency, value in zip(frequencies, tl, strict=True)
+                        if frequency in ISO717_FREQUENCIES_HZ]
+            rw = iso717_rw(ISO717_FREQUENCIES_HZ, selected).rw_db
+            warnings.append("Rw orientativo calculado con 100–3150 Hz mediante ISO 717-1; "
+                            "procedimiento provisional pendiente de revisión normativa. "
+                            "No constituye un ensayo ni una certificación.")
+        warnings.append(stc_reason or
+                        "STC orientativo: procedimiento legado 32/8, 125–4000 Hz, "
                         "TL redondeado a dB enteros (mitades alejadas de cero). "
                         "No declara conformidad con una edición de ASTM E413; "
                         "no constituye un ensayo ni una certificación.")
@@ -425,7 +501,7 @@ def predict_assembly(project: AssemblyProject, *, cancel_event: Event | None = N
         project, frequencies, tuple(float(value) for value in tl), rw,
         sum(plate.mass_kg_m2 for plate in plates), total_thickness,
         critical, () if porous_mode else _resonances(plates, project),
-        tuple(dict.fromkeys(warnings)), MODEL_ID,
+        tuple(dict.fromkeys(warnings)), model_name_for_project(project),
     )
 
 
@@ -495,7 +571,8 @@ def project_to_dict(project: AssemblyProject) -> dict[str, Any]:
             for name in ("catalog_entry", "profile"):
                 data[name] = None if data[name] is None else entry_to_dict(data[name])
             layers.append(data)
-        result["panels"].append({"layers": layers, "name": panel.name})
+        result["panels"].append({"layers": layers, "name": panel.name,
+                                 "edge_loss_factor": panel.edge_loss_factor})
     result["cavities"] = []
     for cavity in project.cavities:
         data = {field.name: getattr(cavity, field.name) for field in fields(Cavity)}
@@ -538,7 +615,7 @@ def _project_from_dict(data: dict) -> AssemblyProject:
                 if layer[name] is not None:
                     layer[name] = entry_from_dict(layer[name])
             layers.append(Layer(**layer))
-        panels.append(Panel(tuple(layers), panel["name"]))
+        panels.append(Panel(tuple(layers), panel["name"], panel["edge_loss_factor"]))
     result["panels"] = tuple(panels)
     cavities = []
     for item in _list(result["cavities"], "cavities"):
@@ -599,12 +676,15 @@ def _migrate_v2_dict(data: Any) -> AssemblyProject:
     import copy
 
     data = copy.deepcopy(data)
-    added_project = {"facing", "leak", "rainfall", "porous", "floor", "excitation"}
+    added_project = {"facing", "leak", "rainfall", "porous", "floor", "excitation",
+                     "calculation_model"}
     old_project = {field.name for field in fields(AssemblyProject)} - added_project
     if not isinstance(data, dict) or set(data) != old_project:
         raise ValueError("AssemblyProject V2: campos faltantes o desconocidos.")
     for panel in _list(data["panels"], "panels"):
-        panel = _object(panel, Panel)
+        if not isinstance(panel, dict) or set(panel) != {"layers", "name"}:
+            raise ValueError("Panel V2: campos faltantes o desconocidos.")
+        panel["edge_loss_factor"] = 0.0
         for layer in _list(panel["layers"], "layers"):
             if not isinstance(layer, dict) or set(layer) != {f.name for f in fields(Layer)} - {"enabled"}:
                 raise ValueError("Layer V2: campos faltantes o desconocidos.")
@@ -618,7 +698,28 @@ def _migrate_v2_dict(data: Any) -> AssemblyProject:
                       ("porous", PorousSettings), ("floor", FloorSettings)):
         data[name] = asdict(cls())
     data["excitation"] = "airborne"
+    data["calculation_model"] = "infinite"
     return project_from_dict(data)
+
+
+def _migrate_v3_dict(data: Any) -> AssemblyProject:
+    """Schema 3 has no finite correction or extra boundary damping.
+
+    The old equations are preserved when opening an existing file. Converting
+    to the finite model is an explicit edit that will be saved in schema 4.
+    """
+    import copy
+
+    data = copy.deepcopy(data)
+    old_fields = {field.name for field in fields(AssemblyProject)} - {"calculation_model"}
+    if not isinstance(data, dict) or set(data) != old_fields:
+        raise ValueError("AssemblyProject V3: campos faltantes o desconocidos.")
+    data["calculation_model"] = "infinite"
+    for panel in _list(data["panels"], "panels"):
+        if not isinstance(panel, dict) or set(panel) != {"layers", "name"}:
+            raise ValueError("Panel V3: campos faltantes o desconocidos.")
+        panel["edge_loss_factor"] = 0.0
+    return _project_from_dict(data)
 
 
 def _atomic_write(path: str | Path, data: str) -> None:
@@ -667,7 +768,8 @@ def save_workspace(active: AssemblyProject, variants: Sequence[AssemblyProject],
             raise ValueError(f"Variante duplicada para {key[0]} / {key[1]} paneles.")
         keys.add(key)
         variant_snapshots.append(data)
-    payload = {"schema_version": PROJECT_SCHEMA_VERSION, "model_name": MODEL_ID, "project": snapshot}
+    payload = {"schema_version": PROJECT_SCHEMA_VERSION,
+               "model_name": model_name_for_project(detached_active), "project": snapshot}
     if variant_snapshots:
         payload["variants"] = variant_snapshots
     encoded = json.dumps(payload, indent=2, ensure_ascii=False, allow_nan=False) + "\n"
@@ -682,7 +784,7 @@ def load_assembly(path: str | Path) -> AssemblyProject:
 
 
 def load_workspace(path: str | Path) -> tuple[AssemblyProject, tuple[AssemblyProject, ...]]:
-    """Load all V3 editor variants, or an active project from V1/V2/simple V3."""
+    """Load schema 4 variants, explicitly migrating historical schemas 1–3."""
     with Path(path).open("rb") as stream:
         raw = stream.read(_MAX_BYTES + 1)
     if len(raw) > _MAX_BYTES:
@@ -700,11 +802,24 @@ def load_workspace(path: str | Path) -> tuple[AssemblyProject, tuple[AssemblyPro
                 or payload["model_name"] != "transfer-matrix-plate-1"):
             raise ValueError("Versión de modelo V2 o campos desconocidos.")
         return _migrate_v2_dict(payload["project"]), ()
+    if payload["schema_version"] == 3:
+        if (set(payload) not in ({"schema_version", "model_name", "project"},
+                                {"schema_version", "model_name", "project", "variants"})
+                or payload["model_name"] != MODEL_ID):
+            raise ValueError("Versión de modelo V3 o campos desconocidos.")
+        active = _migrate_v3_dict(payload["project"])
+        # Validate the complete old workspace, including duplicate topology keys.
+        migrated = [project_to_dict(_migrate_v3_dict(item))
+                    for item in _list(payload.get("variants", []), "variants")]
+        return active, _variants_from_dicts(migrated, active)
     if (set(payload) not in ({"schema_version", "model_name", "project"},
                             {"schema_version", "model_name", "project", "variants"})
-            or payload["schema_version"] != PROJECT_SCHEMA_VERSION or payload["model_name"] != MODEL_ID):
+            or payload["schema_version"] != PROJECT_SCHEMA_VERSION
+            or payload["model_name"] not in (MODEL_ID, FINITE_MODEL_ID)):
         raise ValueError("Versión de esquema o modelo no compatible, o campos desconocidos.")
     active = _project_from_dict(payload["project"])
+    if payload["model_name"] != model_name_for_project(active):
+        raise ValueError("El identificador del modelo no coincide con las condiciones del proyecto.")
     variants = _variants_from_dicts(payload.get("variants", []), active)
     return active, variants
 
@@ -760,8 +875,11 @@ def _predictions(predictions: Sequence[AssemblyPrediction]) -> tuple[AssemblyPre
             raise ValueError("Rw debe ser entero o nulo.")
         if not isinstance(item.warnings, tuple) or any(not isinstance(w, str) for w in item.warnings):
             raise ValueError("Las advertencias deben ser una tupla de textos.")
-        if item.model_name != MODEL_ID:
-            raise ValueError("Versión de modelo desconocida.")
+        if item.model_name != model_name_for_project(item.project):
+            raise ValueError("Versión de modelo desconocida o incompatible con el proyecto.")
+        if item.rw_db is not None and item.rating_unavailable_reason("rw"):
+            raise ValueError("El resultado contiene Rw fuera del dominio de clasificación: "
+                             + item.rating_unavailable_reason("rw"))
         project_from_dict(project_to_dict(item.project))
     return items
 
@@ -769,6 +887,15 @@ def _predictions(predictions: Sequence[AssemblyPrediction]) -> tuple[AssemblyPre
 def _metadata(item: AssemblyPrediction, index: int) -> dict[str, Any]:
     return {
         "prediction_index": index, "project_name": item.project.name, "model_name": item.model_name,
+        "calculation_model": item.project.calculation_model,
+        "panel_width_m": item.project.width_m, "panel_height_m": item.project.height_m,
+        "panel_edge_loss_factors": json.dumps(
+            [panel.edge_loss_factor for panel in item.project.panels], allow_nan=False,
+        ),
+        "first_panel_modes_hz": json.dumps(item.project.first_panel_modes_hz, allow_nan=False),
+        "finite_validity_floor_hz": item.project.finite_validity_floor_hz,
+        "rw_unavailable_reason": item.rating_unavailable_reason("rw"),
+        "stc_unavailable_reason": item.rating_unavailable_reason("stc"),
         "total_mass_kg_m2": item.total_mass_kg_m2, "total_thickness_mm": item.total_thickness_mm,
         "rw_db_illustrative": item.rw_db,
         "stc_illustrative": item.stc_db,
@@ -821,13 +948,24 @@ def export_assembly_html(predictions: Sequence[AssemblyPrediction], path: str | 
     ]
     for index, item in enumerate(items, 1):
         parts.append(f"<section><h2>{index}. {escape(item.project.name)}</h2>")
-        rw = "No aplicable" if item.rw_db is None else f"{item.rw_db} dB (orientativo)"
-        stc = ("No aplicable" if item.stc_db is None else
+        rw = (escape(item.rating_unavailable_reason("rw") or "No aplicable")
+              if item.rw_db is None else f"{item.rw_db} dB (orientativo)")
+        stc = (escape(item.rating_unavailable_reason("stc") or "No aplicable")
+               if item.stc_db is None else
                f"{item.stc_db} (orientativo; legado 32/8, TL redondeado a dB enteros)")
         mass = ("Masa porosa: no inferida" if item.project.element_type == "porous" else
                 f"Masa de hojas: {item.total_mass_kg_m2:g} kg/m²")
         parts.append(f"<p>Rw: {rw} · STC: {stc} · {mass} · "
                      f"Espesor total: {item.total_thickness_mm:g} mm</p>")
+        model_label = ("V6 · corte angular finito de Davy" if item.model_name == FINITE_MODEL_ID
+                       else "Histórico · placas infinitas")
+        parts.append(f"<p>Modelo: {escape(model_label)} ({escape(item.model_name)}). "
+                     f"Dimensiones: {item.project.width_m:g} × {item.project.height_m:g} m.</p>")
+        if item.model_name == FINITE_MODEL_ID:
+            losses = "; ".join(f"Panel {index}: {panel.edge_loss_factor:g}"
+                               for index, panel in enumerate(item.project.panels, 1))
+            parts.append(f"<p>η de borde adicional: {losses}. "
+                         "No se infiere de propiedades de catálogo.</p>")
         parts.append(f"<p>{escape(describe_assembly(item.project))}</p>")
         parts.append("<table><thead><tr><th>Panel / capa</th><th>Producto</th><th>Cantidad</th>"
                      "<th>Espesor unitario (mm)</th><th>Densidad (kg/m³)</th></tr></thead><tbody>")

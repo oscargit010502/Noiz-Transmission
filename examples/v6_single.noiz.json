@@ -1,0 +1,121 @@
+{
+  "schema_version": 4,
+  "model_name": "finite-davy-transfer-1",
+  "project": {
+    "name": "V6 Single — referencia sintética",
+    "panels": [
+      {
+        "layers": [
+          {
+            "name": "Panel ligero — ejemplo sintético",
+            "thickness_mm": 12.5,
+            "density_kg_m3": 800.0,
+            "young_modulus_pa": 2500000000.0,
+            "loss_factor": 0.03,
+            "poisson_ratio": 0.25,
+            "count": 1,
+            "catalog_entry": {
+              "id": "noiz:synthetic-light-panel",
+              "kind": "material",
+              "name": "Panel ligero — ejemplo sintético",
+              "category": "Referencia sintética",
+              "manufacturer": "Sin fabricante",
+              "countries": [
+                "Internacional / sin fabricante"
+              ],
+              "properties": {
+                "density_kg_m3": 800.0,
+                "thickness_m": 0.0125,
+                "young_modulus_pa": 2500000000.0,
+                "poisson_ratio": 0.25,
+                "loss_factor": 0.03,
+                "material_type": "Isotropic",
+                "solid_model_eligible": true,
+                "measurement_verified": false,
+                "data_status": "synthetic",
+                "loss_factor_source": "Hipótesis del usuario; V1 no contiene amortiguamiento"
+              },
+              "raw_fields": {
+                "id": "\"synthetic-light-panel\"",
+                "name": "\"Panel ligero — ejemplo sintético\"",
+                "density_kg_m3": "800.0",
+                "young_modulus_pa": "2500000000.0",
+                "poisson_ratio": "0.25",
+                "region": "\"Internacional / sin fabricante\"",
+                "source": "\"Valores definidos por el proyecto para verificación numérica; no son una ficha comercial.\"",
+                "data_status": "\"synthetic\"",
+                "source_url": "null",
+                "source_date": "\"2026-10-13\"",
+                "license": "\"MIT\"",
+                "version": "\"1\"",
+                "uncertainty": "\"No evaluada; no utilizar como caracterización de un producto comercial.\""
+              },
+              "source_file": "noiz-v1-material-snapshot",
+              "source_sha256": "ed0ba372c3d516f76d268b241207b7b01a74c4a97aaad93fe71fd0f2b03f2f98",
+              "original_id": "synthetic-light-panel",
+              "warnings": [
+                "Procedencia: Valores definidos por el proyecto para verificación numérica; no son una ficha comercial.",
+                "Incertidumbre: No evaluada; no utilizar como caracterización de un producto comercial."
+              ]
+            },
+            "profile": null,
+            "enabled": true
+          }
+        ],
+        "name": "Panel 1",
+        "edge_loss_factor": 0.0
+      }
+    ],
+    "cavities": [],
+    "element_type": "wall",
+    "width_m": 2.4,
+    "height_m": 2.7,
+    "incidence": "diffuse",
+    "air_density_kg_m3": 1.21,
+    "sound_speed_m_s": 343,
+    "limiting_angle_deg": 78,
+    "leak_percentage": 0,
+    "floor_cover": null,
+    "notes": "Ejemplo sintético para verificar el software, no un sistema ensayado. Hojas independientes; resistividad de cámara 10000 Pa·s/m² asumida. Dimensiones 2.4 × 2.7 m, corte angular finito de Davy. Pérdidas adicionales de borde 0: no se supone montaje medido. No es una referencia de exactitud experimental.",
+    "facing": {
+      "enabled": false,
+      "material": null,
+      "thickness_mm": 0,
+      "flow_resistivity_pa_s_m2": null,
+      "count": 1
+    },
+    "leak": {
+      "enabled": false,
+      "kind": "slit",
+      "method": "gomperts",
+      "position": "middle",
+      "height_mm": 1,
+      "length_mm": 1000,
+      "depth_mm": 100,
+      "radius_mm": 1,
+      "mechel_sealed": false,
+      "mass_side1_kg_m2": 0,
+      "mass_side2_kg_m2": 0,
+      "mechel_absorption": false,
+      "cavity_empty": true,
+      "cavity_absorption": null
+    },
+    "rainfall": {
+      "rain_type": "laboratory",
+      "laboratory_class": "heavy",
+      "natural_mm_h": 40,
+      "rainfall_area_m2": 1
+    },
+    "porous": {
+      "material": null,
+      "thickness_mm": 50,
+      "flow_resistivity_pa_s_m2": null
+    },
+    "floor": {
+      "mode": "measured",
+      "base_floor": "lightweight"
+    },
+    "excitation": "airborne",
+    "calculation_model": "finite"
+  }
+}

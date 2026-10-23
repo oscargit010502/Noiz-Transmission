@@ -72,4 +72,4 @@ def test_new_computed_rating_does_not_change_project_schema(notched_prediction, 
     assert project_from_dict(data) == notched_prediction.project
     path = tmp_path / "project.noiz.json"
     save_assembly(notched_prediction.project, path)
-    assert json.loads(path.read_text())["schema_version"] == 3
+    assert json.loads(path.read_text())["schema_version"] == 4

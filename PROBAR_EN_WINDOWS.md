@@ -1,11 +1,11 @@
-# Probar Noiz Transmission V5 en Windows
+# Probar Noiz Transmission V6 en Windows
 
 La ventana se abre en tu ordenador. Esta entrega contiene código y un lanzador
 `.cmd`; todavía no contiene un instalador `.exe`.
 
 ## Descargar y abrir
 
-1. Descarga el [ZIP V5 actualizado desde GitHub](https://github.com/oscargit010502/Noiz-Transmission/archive/refs/heads/codex/noiz-transmission-v5.zip)
+1. Descarga el [ZIP V6 desde GitHub](https://github.com/oscargit010502/Noiz-Transmission/archive/refs/heads/codex/noiz-transmission-v6.zip)
    y selecciona **Extraer todo**. La carpeta del proyecto debe contener `INICIAR_NOIZ.cmd`, `pyproject.toml`,
    `uv.lock`, `examples` y `src`. Usa una carpeta nueva para conservar tus versiones anteriores.
 2. Instala **uv** siguiendo sus
@@ -29,15 +29,38 @@ uv sync --locked --extra desktop
 uv run --locked --extra desktop noiz-transmission
 ```
 
-La V5 configura la instalación por copia tanto en el proyecto como en el lanzador.
+La aplicación configura la instalación por copia tanto en el proyecto como en el lanzador.
 Esto evita el error **396** de OneDrive con vínculos permanentes. Si tu instalación
 anterior quedó incompleta, cierra Noiz y repite los comandos anteriores en la
-carpeta extraída de V5; uv completará las dependencias. No necesitas borrar el
+carpeta extraída de V6; uv completará las dependencias. No necesitas borrar el
 catálogo ni tus proyectos.
 
 No uses `/workspace/...` en tu PC: esa es la ubicación de la copia en la nube.
 
-## Qué cambia en la V5
+## Probar el motor V6
+
+1. Abre `examples/v6_single.noiz.json` y pulsa **F5**. En **Dimensiones y
+   condiciones de cálculo…** comprueba que está seleccionado el modo de tamaño
+   finito. Ancho y alto intervienen en la corrección de la curva difusa.
+2. Conserva el resultado en Comparación. Cambia el ancho, calcula y compara:
+   la corrección depende del área y del perímetro del elemento.
+3. Ajusta las pérdidas adicionales de borde del panel si dispones de ese dato.
+   Su valor cero inicial evita sumar pérdidas de montaje a materiales que ya
+   las incluyen. No es una propiedad que se pueda deducir de una fotografía.
+4. Prueba `v6_double.noiz.json`, `v6_triple.noiz.json` y `v6_quad.noiz.json`.
+   Son ejemplos sintéticos de hojas independientes, sin puentes por montantes.
+5. Vuelve a calcular un proyecto idéntico para comprobar la reutilización del
+   resultado. Cambiar dimensiones, pérdidas o material exige un cálculo nuevo.
+6. Consulta **Ayuda → Modelo e hipótesis…** y los informes: las bandas próximas
+   a la primera resonancia requieren un modelo modal que aún no está resuelto.
+
+Los archivos anteriores se abren con el modelo infinito que usaban. Para estudiar
+el efecto de V6, cambia explícitamente el modelo en condiciones de cálculo y
+guarda una copia. Los archivos nuevos usan esquema 4; V5 no puede leer ese esquema.
+La corrección verificada es Davy, no Sewell. No hay todavía una tolerancia
+experimental demostrada para Noiz; consulta [evidencia V6](docs/v6-evidence.md).
+
+## Interfaz conservada de V5
 
 El gráfico conserva ejes de igual longitud, incluso al cambiar su tamaño, y
 muestra las leyendas a la derecha. El selector **Rw / STC** cambia el índice y
@@ -60,14 +83,14 @@ registro los contiene. Los ocho XML de esta entrega no incluyen enlaces legibles
 a drawings/BIM: no se atribuye precisión de fabricante a las geometrías esquemáticas.
 
 Conserva tu carpeta anterior y sus materiales propios. Si utilizabas una biblioteca
-portátil, copia su carpeta `local_data` a la carpeta nueva: V5.1 la combina con
+portátil, copia su carpeta `local_data` a la carpeta nueva: V6 la combina con
 la base integrada sin sobrescribirla al abrir. Si hay varios catálogos portátiles,
 se elige `catalog-v5.json`, luego `catalog-v3.json` y luego `catalog.json`.
 Si configuraste `NOIZ_CATALOG_PATH`, esa variable selecciona una biblioteca aislada;
 para recuperar la carga normal en PowerShell ejecuta
 `Remove-Item Env:NOIZ_CATALOG_PATH -ErrorAction SilentlyContinue` antes de iniciar.
-Los proyectos V1/V2/V3/V4 se abren en V5. Se mantiene el esquema 3; los proyectos
-V5 que usan la nueva familia Connection requieren V5 para abrirse correctamente.
+Los proyectos anteriores y sus variantes se abren en V6 conservando su catálogo
+y propiedades. La migración conserva también la elección del modelo anterior.
 
 ## Recorrido para comprobar la V5
 

@@ -1,5 +1,11 @@
 # Modelo físico y clasificación
 
+**V6:** el modelo nuevo, la corrección de tamaño finito y las pérdidas de borde
+se describen en [física V6](v6-physics.md). Las fuentes y el nivel de evidencia
+están en [evidencia V6](v6-evidence.md). Las ecuaciones siguientes documentan la
+ruta infinita que se conserva para reproducir proyectos V2–V5; no describen por
+sí solas el modo finito nuevo.
+
 La versión 3 (0.3.0) amplía el modelo propio de transmisión aérea por placas
 isótropas infinitas, cámaras con gas y capas porosas. El identificador se mantiene
 como `transfer-matrix-plate-1`; para reproducir una ejecución también es necesario

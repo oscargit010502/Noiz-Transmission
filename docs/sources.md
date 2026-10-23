@@ -1,5 +1,9 @@
 # Fuentes y estado de consulta
 
+La revisión V6 de los tres libros aportados, con páginas, ecuaciones y distinción
+entre fuentes consultadas y artículos pendientes, está en
+[revisión V6](v6-reference-review.md) y [evidencia V6](v6-evidence.md).
+
 Registro actualizado: **2026-10-13**. Una fuente consultada se distingue de una
 referencia localizada cuya lectura primaria sigue pendiente. No se dispone todavía
 de estudios experimentales que cuantifiquen el error del motor Noiz.

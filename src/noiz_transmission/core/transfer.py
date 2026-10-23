@@ -1,8 +1,10 @@
-"""Airborne transmission through up to four infinite plates and sealed gas gaps.
+"""Airborne transmission through up to four thin plates and sealed gas gaps.
 
 This is an independently derived thin-plate / plane-wave transfer-matrix model,
-not an implementation of INSUL's prediction methods. It excludes finite panel
-size, shear deformation, frame bridges, leakage, flanking and impact excitation.
+not an implementation of INSUL's prediction methods. By default the plates are
+infinite. Optional FinitePanel parameters add the Davy angular size correction
+and explicit edge loss, but do not resolve finite modes or support conditions.
+Shear deformation, frame bridges, flanking and impact excitation are excluded.
 Each gas cavity conserves the exterior tangential wavenumber, including
 evanescent propagation and the finite critical-angle matrix limit. An optional
 porous facing lies on the incident side. A porous slab can also stand alone.
@@ -24,6 +26,7 @@ NOMINAL_BANDS_HZ. ``narrowband_tau`` accepts arbitrary positive frequencies.
 
 from __future__ import annotations
 
+import cmath
 import math
 import warnings
 from collections.abc import Callable, Sequence
@@ -37,6 +40,7 @@ from numpy.typing import ArrayLike, NDArray
 from scipy.integrate import IntegrationWarning, quad
 from scipy.optimize import brentq, minimize_scalar
 
+from noiz_transmission.core.finite_panel import FinitePanel
 from noiz_transmission.core.physics import (
     _positive_scalar,
     _real_array,
@@ -73,15 +77,18 @@ def _nonnegative(value: float, name: str) -> float:
 
 @dataclass(frozen=True)
 class Plate:
-    """An infinite thin plate; D=0 is an ideal limp sheet, not a rigid plate.
+    """A thin plate; D=0 is an ideal limp sheet, not a rigid plate.
 
     For a homogeneous isotropic plate D=E*h**3/[12*(1-nu**2)] in N*m.
     Loss factor is the nonnegative structural hysteretic loss of bending.
+    Optional finite_size adds explicit edge loss and a Davy diffuse cutoff;
+    it does not replace the plane-wave impedance with a finite modal solution.
     """
 
     mass_kg_m2: float
     bending_stiffness_nm: float = 0.0
     loss_factor: float = 0.0
+    finite_size: FinitePanel | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "mass_kg_m2", _positive_scalar(self.mass_kg_m2, "mass_kg_m2"))
@@ -89,6 +96,14 @@ class Plate:
             self.bending_stiffness_nm, "bending_stiffness_nm",
         ))
         object.__setattr__(self, "loss_factor", _nonnegative(self.loss_factor, "loss_factor"))
+        if self.finite_size is not None:
+            if not isinstance(self.finite_size, FinitePanel):
+                raise ValueError("finite_size must be a FinitePanel or None")
+            self.finite_size.total_loss_factor(self.loss_factor)
+
+    @property
+    def effective_loss_factor(self) -> float:
+        return self.loss_factor + (self.finite_size.edge_loss_factor if self.finite_size else 0)
 
 
 @dataclass(frozen=True)
@@ -182,6 +197,14 @@ def _assembly(plates: Sequence[Plate], gaps: Sequence[Gap]) -> tuple[tuple, tupl
         raise ValueError("plates must contain Plate objects")
     if not all(isinstance(gap, Gap) for gap in gaps):
         raise ValueError("gaps must contain Gap objects")
+    finite = [plate.finite_size is not None for plate in plates]
+    if any(finite) and not all(finite):
+        raise ValueError("All plates must use finite_size, or all must use the infinite model")
+    if all(finite):
+        dimensions = {tuple(sorted((plate.finite_size.width_m, plate.finite_size.height_m)))
+                      for plate in plates}
+        if len(dimensions) != 1:
+            raise ValueError("Finite plates must share common width and height")
     return plates, gaps
 
 
@@ -287,7 +310,7 @@ def _coefficients(
         if facing is not None and facing.thickness_m > 0:
             porous_layer(facing.thickness_m, facing.flow_resistivity_pa_s_m2)
         for index, plate in enumerate(plates):
-            stiffness = plate.bending_stiffness_nm * (1 + 1j * plate.loss_factor)
+            stiffness = plate.bending_stiffness_nm * (1 + 1j * plate.effective_loss_factor)
             impedance = (
                 1j * omega * plate.mass_kg_m2 - 1j * stiffness * tangential_fourth / omega
             ) / air_impedance
@@ -308,20 +331,115 @@ def _coefficients(
     return a, b, c, d
 
 
-def _tau(
-    frequencies: FloatArray, sine_squared: FloatArray, plates: tuple[Plate, ...],
-    gaps: tuple[Gap, ...], density: float, speed: float,
-    facing: PorousLayer | None = None,
-) -> FloatArray:
-    a, b, c, d = _coefficients(frequencies, sine_squared, plates, gaps, density, speed, facing)
+def _angular_coefficients(
+    frequency: float, plates: tuple[Plate, ...], gaps: tuple[Gap, ...],
+    density: float, speed: float, facing: PorousLayer | None = None,
+) -> Callable:
+    """Prepare frequency-only terms once for a resonance-resolved angular integral.
+
+    Root bracketing evaluates hundreds of scalar angles at the same frequency.
+    Revalidating and recomputing each porous medium at every angle dominated the
+    solver cost. This kernel keeps the exact transfer matrices and uses scalar
+    complex arithmetic for roots, broadcasting NumPy for integration batches.
+    Its lifetime is one frequency evaluation; no cross-project mutable cache.
+    """
+    omega = 2 * math.pi * frequency
+    air_k = omega / speed
+    air_z = density * speed
+    layers = []
+    porous_media = {}
+
+    def fluid(thickness, z, k, matched=False):
+        if thickness > 0:
+            layers.append(("air" if matched else "fluid", thickness, z, k))
+
+    def porous(thickness, sigma):
+        if sigma not in porous_media:
+            z, k = miki_characteristics(np.asarray(frequency), sigma,
+                                       air_density=density, sound_speed=speed)
+            porous_media[sigma] = complex(z), complex(k)
+        fluid(thickness, *porous_media[sigma])
+
+    if facing is not None and facing.thickness_m > 0:
+        porous(facing.thickness_m, facing.flow_resistivity_pa_s_m2)
+    for index, plate in enumerate(plates):
+        stiffness = plate.bending_stiffness_nm * (1 + 1j * plate.effective_loss_factor)
+        layers.append(("plate", 1j * omega * plate.mass_kg_m2 / air_z,
+                       -1j * stiffness * air_k**4 / (omega * air_z), 0))
+        if index < len(gaps):
+            gap = gaps[index]
+            if gap.absorber_thickness_m > 0:
+                residual = (gap.depth_m - gap.absorber_thickness_m) / 2
+                fluid(residual, air_z, air_k, True)
+                porous(gap.absorber_thickness_m, gap.flow_resistivity_pa_s_m2)
+                fluid(residual, air_z, air_k, True)
+            else:
+                rho = density if gap.gas_density_kg_m3 is None else gap.gas_density_kg_m3
+                c = speed if gap.gas_sound_speed_m_s is None else gap.gas_sound_speed_m_s
+                fluid(gap.depth_m, rho * c, omega / c, rho == density and c == speed)
+
+    def coefficients(sine_squared):
+        scalar = isinstance(sine_squared, (float, int, np.floating))
+        u = float(sine_squared) if scalar else np.asarray(sine_squared)
+        cosine = math.sqrt(1 - u) if scalar else np.sqrt(1 - u)
+        a, b, c, d = 1.0 + 0j, 0j, 0j, 1.0 + 0j
+        # Equal products/gaps occur repeatedly in Triple/Quad assemblies.
+        # At a fixed angle their matrices are identical; evaluate trigonometry
+        # and porous propagation once per distinct layer, then multiply.
+        matrices = {}
+        for layer in layers:
+            kind, first, second, third = layer
+            if kind == "plate":
+                impedance = (first + second * u**2) * cosine
+                b, d = a * impedance + b, c * impedance + d
+                continue
+            if layer in matrices:
+                co, upper, lower = matrices[layer]
+            elif kind == "air":
+                phase = air_k * cosine * first
+                co = math.cos(phase) if scalar else np.cos(phase)
+                upper = lower = 1j * (math.sin(phase) if scalar else np.sin(phase))
+            else:
+                kz_squared = third**2 - air_k**2 * u
+                kz = cmath.sqrt(kz_squared) if scalar else np.sqrt(kz_squared + 0j)
+                phase = kz * first
+                co = cmath.cos(phase) if scalar else np.cos(phase)
+                # cos(kz*d) and sin(kz*d)/kz are even in kz: either root
+                # gives the same matrix, including the evanescent branch.
+                if scalar:
+                    sin_over_kz = (first * (1 - phase**2 / 6 + phase**4 / 120)
+                                   if abs(phase) < 1e-8 else cmath.sin(phase) / kz)
+                else:
+                    sin_over_kz = first * np.sinc(phase / np.pi)
+                upper = 1j * second * third * sin_over_kz * cosine / air_z
+                lower = 1j * kz_squared * sin_over_kz * air_z / (cosine * second * third)
+            matrices[layer] = co, upper, lower
+            a, b, c, d = (a * co + b * lower, a * upper + b * co,
+                           c * co + d * lower, c * upper + d * co)
+        return a, b, c, d
+
+    return coefficients
+
+
+def _tau_from_coefficients(coefficients: tuple) -> FloatArray:
+    a, b, c, d = coefficients
     with np.errstate(over="ignore", invalid="ignore", divide="ignore", under="ignore"):
         result = np.asarray(4 / np.abs(a + b + c + d) ** 2, dtype=float)
     if np.any(~np.isfinite(result)) or np.any(result <= 0):
         raise ValueError("Transfer calculation exceeds the representable numerical range")
     if np.any(result > 1 + 1e-9):
         raise ValueError("Transfer calculation violates passivity; inputs exceed numerical accuracy")
-    # Rounding at exact, lossless transmission resonances can exceed 1 by a few ulps.
     return np.minimum(result, 1.0)
+
+
+def _tau(
+    frequencies: FloatArray, sine_squared: FloatArray, plates: tuple[Plate, ...],
+    gaps: tuple[Gap, ...], density: float, speed: float,
+    facing: PorousLayer | None = None,
+) -> FloatArray:
+    return _tau_from_coefficients(
+        _coefficients(frequencies, sine_squared, plates, gaps, density, speed, facing),
+    )
 
 
 def narrowband_tau(
@@ -364,6 +482,16 @@ def _nodes(order: int) -> tuple[FloatArray, FloatArray]:
     return nodes, weights
 
 
+def _angular_domain(frequencies, plates, user_limit, speed):
+    """Davy finite aperture: truncate the integral without renormalising it."""
+    limit = np.asarray(user_limit)
+    finite = bool(plates and plates[0].finite_size is not None)
+    if finite:
+        for plate in plates:
+            limit = np.minimum(limit, plate.finite_size.davy_sine_squared_limit(frequencies, speed))
+    return limit, 1.0 if finite else user_limit
+
+
 def _band_tau(
     centre: float, plates: tuple[Plate, ...], gaps: tuple[Gap, ...],
     density: float, speed: float, sine_squared_limit: float,
@@ -377,8 +505,9 @@ def _band_tau(
         result = _tau(frequencies, np.asarray(0.0), plates, gaps, density, speed, facing)
     else:
         a_nodes, a_weights = _nodes(angular_order)
-        result = _tau(frequencies[:, None], (sine_squared_limit * a_nodes)[None, :],
-                      plates, gaps, density, speed, facing) @ a_weights
+        limit, normalization = _angular_domain(frequencies, plates, sine_squared_limit, speed)
+        result = (_tau(frequencies[:, None], np.asarray(limit)[..., None] * a_nodes,
+                       plates, gaps, density, speed, facing) @ a_weights) * limit / normalization
     return float(result @ f_weights)
 
 
@@ -526,6 +655,7 @@ def _resonance_resolved_band_tau(
     if sine_squared_limit == 0:
         return frequency_average(0.0)
     if (len(plates) == 1 and plates[0].bending_stiffness_nm == 0
+            and plates[0].finite_size is None
             and (facing is None or facing.thickness_m == 0)):
         # The exact angular limp-sheet integral also handles the grazing limit.
         def limp_power(frequency):
@@ -541,40 +671,58 @@ def _resonance_resolved_band_tau(
             raise NumericalConvergenceError("Limp-sheet band integration failed")
         return value / (upper - lower)
     # The exact grazing endpoint has zero measure; coefficients use its limiting side.
-    upper_u = min(sine_squared_limit, 1 - 1e-12)
     angular_samples = max(257, 32 * math.ceil(2 * upper * travel_time) + 1)
 
     def angular_average(frequency: float) -> float:
         check_cancelled()
 
-        def coefficients(u):
-            return _coefficients(np.asarray(frequency), np.asarray(u), plates, gaps, density, speed, facing)
+        coefficients = _angular_coefficients(frequency, plates, gaps, density, speed, facing)
 
-        points = _resonance_points(0, upper_u, coefficients, angular_samples)
-        edges = np.asarray([0, *points, sine_squared_limit])
+        angular_limit, normalization = _angular_domain(frequency, plates, sine_squared_limit, speed)
+        angular_limit = float(angular_limit)
+        points = _resonance_points(0, min(angular_limit, 1 - 1e-12), coefficients, angular_samples)
+        edges = np.asarray([0, *points, angular_limit])
         widths = np.diff(edges)
         previous = None
         for order in (16, 32, 64):
             nodes, weights = _nodes(order)
             angles = edges[:-1, None] + widths[:, None] * nodes
-            integral = float(np.sum((_tau(np.asarray(frequency), angles, plates, gaps,
-                                          density, speed, facing) @ weights) * widths))
+            integral = float(np.sum((_tau_from_coefficients(coefficients(angles)) @ weights) * widths))
             if previous is not None and abs(integral - previous) <= integral * relative_tolerance / 5:
                 break
             previous = integral
         else:
             integral, error = quad(
-                lambda u: float(_tau(np.asarray(frequency), np.asarray(u), plates, gaps, density, speed, facing)),
-                0, sine_squared_limit, points=points, epsabs=1e-24,
+                lambda u: float(_tau_from_coefficients(coefficients(u))),
+                0, angular_limit, points=points, epsabs=1e-24,
                 epsrel=relative_tolerance / 5, limit=max(400, len(points) * 3),
             )
             if integral <= 0 or error > integral * relative_tolerance * 2:
                 raise NumericalConvergenceError("Angular resonances did not converge")
-        return integral / sine_squared_limit
+        return integral / normalization
 
     frequency_points = []
-    for u in (0.0, upper_u):
+    # Davy's cap and the user's truncation introduce continuous derivative
+    # changes. Seed them explicitly rather than relying on sampled discovery.
+    size_scale = 0.0
+    for plate in plates:
+        if plate.finite_size is not None:
+            geometry = plate.finite_size
+            log_scale = (math.log(speed) - math.log(8 * math.pi)
+                         + float(np.logaddexp(math.log(2) - math.log(geometry.width_m),
+                                              math.log(2) - math.log(geometry.height_m))))
+            if log_scale < math.log(upper):
+                size_scale = max(size_scale, math.exp(log_scale))
+            for cos_squared in (.9, 1 - sine_squared_limit):
+                if cos_squared > 0:
+                    log_transition = log_scale - math.log(cos_squared)
+                    if math.log(lower) < log_transition < math.log(upper):
+                        frequency_points.append(math.exp(log_transition))
+    for boundary in ("normal", "limit"):
         def coefficients(f):
+            u = 0.0 if boundary == "normal" else np.minimum(
+                _angular_domain(f, plates, sine_squared_limit, speed)[0], 1 - 1e-12,
+            )
             return _coefficients(np.asarray(f), np.asarray(u), plates, gaps, density, speed, facing)
 
         frequency_points.extend(_resonance_points(lower, upper, coefficients, frequency_samples))
@@ -582,7 +730,7 @@ def _resonance_resolved_band_tau(
     for plate in plates:
         if plate.bending_stiffness_nm > 0:
             critical = speed**2 / (2 * math.pi) * math.sqrt(plate.mass_kg_m2 / plate.bending_stiffness_nm)
-            for frequency in (critical, critical / sine_squared_limit):
+            for frequency in (critical, critical / sine_squared_limit, critical + size_scale):
                 if lower < frequency < upper:
                     frequency_points.append(frequency)
     integral, error = quad(
@@ -609,9 +757,12 @@ def predict_multilayer(
 ) -> FloatArray:
     """Return third-octave element TL, with convergence-checked energy integration.
 
-    Incidence is ``normal`` or ``diffuse``. Diffuse power weight is
-    2*sin(theta)*cos(theta)/sin(theta_max)**2; 78° is a declared modelling
-    choice, not a universal laboratory correction. Incident power is uniform
+    Incidence is ``normal`` or ``diffuse``. Legacy infinite diffuse weight is
+    2*sin(theta)*cos(theta)/sin(theta_max)**2. FinitePanel uses the Davy upper
+    angular limit and unnormalised 2*sin(theta)*cos(theta), also truncated at
+    the user limit. The 78° default is a modelling choice, not a universal
+    laboratory correction. Finite parameters do not add modal dynamics or
+    structural frame coupling. Incident power is uniform
     per Hz within each exact third-octave band. This spectrum is not the value
     at its nominal band centres. Input order and shape are preserved.
 
@@ -620,9 +771,9 @@ def predict_multilayer(
     intervals; local Gauss-Legendre integration and adaptive quadrature then
     resolve those intervals. Agreement of unseeded whole-band grids is never
     used as proof of convergence. An explicit NumericalConvergenceError is raised
-    if integration fails. ``quadrature_tolerance_db`` sets an upper numerical
-    tolerance; default internal relative-energy targets are tighter than it.
-    This is numerical consistency, not experimental accuracy. Extremely sharp
+    if integration fails. ``quadrature_tolerance_db`` allocates the numerical
+    error-estimate budget, with separate inner and outer targets. This is not
+    a rigorous error bound or experimental accuracy claim. Extremely sharp
     undamped resonances may not converge. ``cancel_event`` permits cooperative
     cancellation between integration evaluations and raises ValueError when set.
     """
@@ -696,7 +847,10 @@ def _predict_bands(
         try:
             coefficient = _adaptive_band_tau(
                 centre, plates, gaps, density, speed, sine_squared,
-                min(1e-4, tolerance * math.log(10) / 100), cancel_event, facing,
+                # Reserve ten parts for outer frequency integration and two
+                # for the inner angular estimator. These are numerical error
+                # estimates, not an experimental accuracy or rigorous bound.
+                -math.expm1(-tolerance * math.log(10) / 10) / 12, cancel_event, facing,
             )
         except NumericalConvergenceError as exc:
             raise NumericalConvergenceError(

@@ -1,5 +1,9 @@
 # Verificación y validación científica
 
+Para V6, véase [evidencia científica y verificación](v6-evidence.md): separa
+las comprobaciones matemáticas, los ejemplos publicados y la validación
+experimental que todavía falta para cuantificar la precisión del predictor.
+
 Se distinguen tres afirmaciones: **el código resuelve las ecuaciones**, **las
 ecuaciones representan el sistema físico** y **la clasificación cumple una norma
 concreta**. Una no demuestra las otras. V4 (0.4.0) cuenta con verificación matemática y

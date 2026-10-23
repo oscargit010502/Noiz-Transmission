@@ -15,6 +15,7 @@ from pathlib import Path
 
 from noiz_transmission import __version__
 from noiz_transmission.application.assembly_services import (
+    PROJECT_SCHEMA_VERSION,
     export_assembly_csv,
     export_assembly_html,
     load_assembly,
@@ -66,7 +67,7 @@ def _assembly(args: argparse.Namespace) -> int:
     # Resolve all projects and calculate all curves before producing any output.
     predictions = tuple(predict_assembly(load_assembly(path)) for path in args.projects)
     payload = {
-        "schema_version": 3, "software": _software(),
+        "schema_version": PROJECT_SCHEMA_VERSION, "software": _software(),
         "predictions": [{**asdict(result), "stc_db": result.stc_db,
                          "stc_procedure": STC_PROCEDURE if result.stc_db is not None else None}
                         for result in predictions],

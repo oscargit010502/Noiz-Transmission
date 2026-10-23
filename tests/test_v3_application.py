@@ -147,7 +147,7 @@ def test_excitation_cannot_be_silently_substituted(single, element, excitation, 
         predict_assembly(project)
 
 
-def test_schema3_roundtrip_includes_all_settings(single, tmp_path):
+def test_current_schema_roundtrip_includes_all_settings(single, tmp_path):
     entry = replace(single.panels[0].layers[0].catalog_entry, kind="absorption")
     project = replace(
         single, facing=Facing(material=entry, thickness_mm=20, count=0),
@@ -160,7 +160,7 @@ def test_schema3_roundtrip_includes_all_settings(single, tmp_path):
     path = tmp_path / "v3.json"
     save_assembly(project, path)
     assert load_assembly(path) == project
-    assert json.loads(path.read_text())["schema_version"] == 3
+    assert json.loads(path.read_text())["schema_version"] == 4
     payload = json.loads(path.read_text())
     payload["project"]["leak"]["unknown_parameter"] = 4
     path.write_text(json.dumps(payload))
@@ -171,9 +171,11 @@ def test_schema3_roundtrip_includes_all_settings(single, tmp_path):
 def test_v2_migration_preserves_original_prediction_inputs(tmp_path):
     original = default_project()
     data = project_to_dict(original)
-    for name in ("facing", "leak", "rainfall", "porous", "floor", "excitation"):
+    for name in ("facing", "leak", "rainfall", "porous", "floor", "excitation",
+                 "calculation_model"):
         del data[name]
     for panel in data["panels"]:
+        del panel["edge_loss_factor"]
         for layer in panel["layers"]:
             del layer["enabled"]
     for cavity in data["cavities"]:

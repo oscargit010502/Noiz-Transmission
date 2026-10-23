@@ -1,5 +1,10 @@
 # Banco de validación
 
+V6 añade un [ejemplo de clasificación publicado por Barron](v6-rating-barron.json),
+comprobaciones de frecuencias características y [mediciones de rendimiento](v6-performance.md).
+El [registro de evidencia V6](../docs/v6-evidence.md) explica qué se comprobó y
+qué falta para cuantificar el error frente a ensayos independientes.
+
 Este directorio conserva evidencias de referencia independientes de las salidas
 generadas por la aplicación. En la primera versión solo contiene casos analíticos:
 **no hay mediciones experimentales ni curvas de INSUL**.

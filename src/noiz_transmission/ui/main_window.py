@@ -7,6 +7,7 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 from threading import Event
+from time import perf_counter
 
 import pyqtgraph as pg
 from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, Signal, Slot
@@ -51,6 +52,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from noiz_transmission import __version__
 from noiz_transmission.application.assemblies import (
     ELEMENT_PANEL_LIMITS,
     AssemblyPrediction,
@@ -62,7 +64,7 @@ from noiz_transmission.application.assemblies import (
 )
 from noiz_transmission.application.assembly_services import (
     cavity_from_entry,
-    default_project_v3,
+    default_project_v6,
     describe_assembly,
     export_assembly_csv,
     export_assembly_html,
@@ -80,6 +82,7 @@ from noiz_transmission.catalog import (
     merge_catalog,
     save_catalog,
 )
+from noiz_transmission.ui.prediction_cache import PredictionCache
 from noiz_transmission.ui.product_picker import ProductPicker
 from noiz_transmission.ui.section_view import SectionView
 from noiz_transmission.ui.settings_editors import (
@@ -154,19 +157,37 @@ class _WorkerSignals(QObject):
 
 
 class _PredictionWorker(QRunnable):
-    def __init__(self, generation: int, project: AssemblyProject):
+    def __init__(self, generation: int, project: AssemblyProject,
+                 cache: PredictionCache | None = None):
         super().__init__()
         self.generation = generation
         self.project = project
         self.signals = _WorkerSignals()
         self.cancel_event = Event()
+        self.cache = cache
+        self.cache_hit = False
+        self.elapsed_seconds = 0.0
 
     @Slot()
     def run(self) -> None:
+        started = perf_counter()
         try:
-            result, error = predict_assembly(self.project, cancel_event=self.cancel_event), None
+            if self.cancel_event.is_set():
+                raise ValueError("Cálculo cancelado.")
+            result = self.cache.get(self.project) if self.cache is not None else None
+            self.cache_hit = result is not None
+            if result is None:
+                result = predict_assembly(self.project, cancel_event=self.cancel_event)
+                if self.cancel_event.is_set():
+                    raise ValueError("Cálculo cancelado.")
+                if self.cache is not None:
+                    self.cache.put(result)
+            if self.cancel_event.is_set():
+                raise ValueError("Cálculo cancelado.")
+            error = None
         except Exception as exc:  # Deliver domain / numerical errors without killing the Qt event loop.
             result, error = None, str(exc)
+        self.elapsed_seconds = perf_counter() - started
         self.signals.finished.emit(self.generation, result, error)
 
 
@@ -175,7 +196,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self.project = default_project_v3()
+        self.project = default_project_v6()
         self._saved_project = self.project
         self._current_path: Path | None = None
         self._loading = False
@@ -198,6 +219,7 @@ class MainWindow(QMainWindow):
         self._comparison_dirty = False
         self._worker: _PredictionWorker | None = None
         self._pool = QThreadPool.globalInstance()
+        self._prediction_cache = PredictionCache()
         try:
             self.entries = load_application_catalog()
             catalog_error = ""
@@ -435,7 +457,7 @@ class MainWindow(QMainWindow):
         reset.clicked.connect(self._reset_view)
         layout.addWidget(reset)
         layout.addStretch()
-        layout.addWidget(label("Noiz V5", "muted"))
+        layout.addWidget(label("Noiz V6", "muted"))
         return side
 
     def _construction(self) -> QWidget:
@@ -1042,8 +1064,12 @@ class MainWindow(QMainWindow):
         self.section_view.set_project(self.project, self._selected_panel)
         self.description_label.setText(describe_assembly(self.project))
         self.description_label.setToolTip(describe_assembly(self.project))
+        model = "V6 · tamaño finito" if self.project.calculation_model == "finite" else "placas infinitas"
+        if porous_mode:
+            model = "Miki · medio poroso"
         self.composition_summary.setText(f"{self.project.width_m:g} × {self.project.height_m:g} m · "
-                                         + ("campo difuso" if self.project.incidence == "diffuse" else "incidencia normal"))
+                                         + ("campo difuso" if self.project.incidence == "diffuse" else "incidencia normal")
+                                         + f" · {model}")
         self.library_label.setText(f"Biblioteca · {len(self.entries):,} registros")
         self.physics_footer.setText(("fc — Hz · masa superficial " if len(self.project.panels) == 1 else "f₀ — Hz · masa total ")
                                    + f"{mass:.1f} kg/m²")
@@ -1317,7 +1343,7 @@ class MainWindow(QMainWindow):
         self._variants[(self.project.element_type, len(self.project.panels))] = self.project
         self._element_topology[self.project.element_type] = len(self.project.panels)
         count = self._element_topology.get(kind, 1)
-        target = self._variants.get((kind, count)) or default_project_v3(element_type=kind)
+        target = self._variants.get((kind, count)) or default_project_v6(element_type=kind)
         self._selected_panel = self._selected_layer = self._selected_cavity = 0
         self._commit(target)
         self._render_project()
@@ -1436,11 +1462,17 @@ class MainWindow(QMainWindow):
     def show_settings(self) -> None:
         dialog = QDialog(self)
         dialog.setWindowTitle("Condiciones de cálculo — Noiz Transmission")
-        dialog.resize(510, 550)
+        dialog.resize(560, 610)
         layout = QVBoxLayout(dialog)
         layout.addWidget(label("Condiciones de cálculo", "sectionTitle"))
         layout.addWidget(label("Aislamiento aéreo del elemento. Sin impacto, lluvia ni transmisiones laterales.", "muted", True))
         form = QFormLayout()
+        model = QComboBox()
+        model.setObjectName("calculationModel")
+        model.addItem("V6 · tamaño finito (Davy)", "finite")
+        model.addItem("V2–V5 · placas infinitas", "infinite")
+        model.setCurrentIndex(model.findData(self.project.calculation_model))
+        form.addRow("Modelo", model)
         incidence = QComboBox()
         incidence.addItem("Campo difuso", "diffuse")
         incidence.addItem("Incidencia normal", "normal")
@@ -1452,17 +1484,52 @@ class MainWindow(QMainWindow):
             ("Ángulo límite [°]", "limiting_angle_deg", .01, 90, 2),
             ("Densidad del aire [kg/m³]", "air_density_kg_m3", .01, 100, 4),
             ("Velocidad del sonido [m/s]", "sound_speed_m_s", 1, 3000, 3),
-            ("Ancho ilustrativo [m]", "width_m", .001, 1000, 4),
-            ("Alto ilustrativo [m]", "height_m", .001, 1000, 4),
+            ("Ancho del panel [m]", "width_m", .001, 1000, 4),
+            ("Alto del panel [m]", "height_m", .001, 1000, 4),
         ):
             control = spin(low, high, decimals=precision)
+            control.setObjectName(key)
             display_value(control, getattr(self.project, key))
             if key in ("width_m", "height_m"):
-                control.setToolTip("Dimensión documental del elemento; el modelo usa placas infinitas y no depende de esta medida.")
+                control.setToolTip("V6: dimensión usada en la corrección angular de tamaño finito. "
+                                   "En el modelo infinito solo describe geometría y área de fugas.")
             settings[key] = control
             displayed_settings[key] = control.value()
             form.addRow(title, control)
         layout.addLayout(form)
+        model_note = label("", "muted", True)
+        def update_model_note():
+            finite = model.currentData() == "finite"
+            model_note.setText(
+                ("Incidencia normal: el tamaño y las pérdidas de flexión de borde no modifican "
+                 "la curva. El modo V6 no representa la rigidez de apoyo ni los modos propios."
+                 if incidence.currentData() == "normal" else
+                 "Davy: límite angular dependiente de tamaño y frecuencia. Aproximación por encima "
+                 "de 1,5 f₁₁; no resuelve los modos propios de una placa finita.")
+                if finite else
+                "Placas infinitas: conserva las ecuaciones V2–V5. Las pérdidas de borde deben ser cero."
+            )
+        model.currentIndexChanged.connect(update_model_note)
+        incidence.currentIndexChanged.connect(update_model_note)
+        update_model_note()
+        layout.addWidget(model_note)
+        layout.addWidget(label("Pérdidas de borde adicionales η · por panel", "sectionTitle"))
+        edge_grid = QGridLayout()
+        edge_controls = []
+        displayed_edge = []
+        for index, panel in enumerate(self.project.panels):
+            control = spin(0, 10, decimals=5)
+            control.setObjectName(f"edgeLossPanel{index + 1}")
+            control.setAccessibleName(f"Pérdidas de borde del panel {index + 1}")
+            display_value(control, panel.edge_loss_factor)
+            control.setToolTip("Factor de pérdidas adimensional adicional al del material. "
+                               "Déjelo en cero si η del material ya incluye montaje. "
+                               "Requiere el modelo V6; no es una corrección universal de laboratorio.")
+            edge_grid.addWidget(label(f"Panel {index + 1}"), 0, index)
+            edge_grid.addWidget(control, 1, index)
+            edge_controls.append(control)
+            displayed_edge.append(control.value())
+        layout.addLayout(edge_grid)
         floor_cover = [self.project.floor_cover]
         cover_label = label(floor_cover[0].name if floor_cover[0] else "Sin revestimiento de suelo asociado", "muted", True)
         row = QHBoxLayout()
@@ -1497,8 +1564,13 @@ class MainWindow(QMainWindow):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             changes = {key: widget.value() for key, widget in settings.items()
                        if widget.value() != displayed_settings[key]}
-            changes.update(incidence=incidence.currentData(), notes=notes.toPlainText(), floor_cover=floor_cover[0])
             try:
+                panels = tuple(
+                    replace(panel, edge_loss_factor=control.value()) if control.value() != initial else panel
+                    for panel, control, initial in zip(self.project.panels, edge_controls, displayed_edge, strict=True)
+                )
+                changes.update(incidence=incidence.currentData(), notes=notes.toPlainText(),
+                               floor_cover=floor_cover[0], calculation_model=model.currentData(), panels=panels)
                 self._commit(replace(self.project, **changes))
             except (ValueError, TypeError) as exc:
                 self._error(str(exc))
@@ -1521,7 +1593,7 @@ class MainWindow(QMainWindow):
         self.progress.show()
         self.message_label.setText("Calculando respuesta de placas y cámaras…")
         self.statusBar().showMessage("Cálculo en curso · puedes seguir editando el proyecto.")
-        worker = _PredictionWorker(self._generation, project)
+        worker = _PredictionWorker(self._generation, project, self._prediction_cache)
         worker.signals.finished.connect(self._prediction_finished)
         self._worker = worker
         self._pool.start(worker)
@@ -1530,6 +1602,7 @@ class MainWindow(QMainWindow):
     def _prediction_finished(self, generation: int, result, error) -> None:
         if self._closing:
             return
+        worker = self._worker
         self._busy = False
         self._worker = None
         self.calculate_button.setEnabled(True)
@@ -1554,7 +1627,9 @@ class MainWindow(QMainWindow):
         self.message_label.setText("Cálculo actualizado · modelo exploratorio. Consulta hipótesis y procedencia.")
         self.message_label.setToolTip("\n".join(result.warnings))
         self._refresh_results()
-        self.statusBar().showMessage("Cálculo completado. Puedes guardar este resultado en Comparación.")
+        elapsed = worker.elapsed_seconds if worker is not None else 0.0
+        source = "Resultado recuperado de caché" if worker is not None and worker.cache_hit else "Cálculo completado"
+        self.statusBar().showMessage(f"{source} · {elapsed:.3f} s · Puedes guardar el resultado en Comparación.")
 
     def _configure_rating_choices(self) -> None:
         previous = self.rating_combo.currentData()
@@ -1577,6 +1652,8 @@ class MainWindow(QMainWindow):
             return None
         key = self.rating_combo.currentData()
         try:
+            if key in ("rw", "stc") and prediction.rating_unavailable_reason(key):
+                return None
             return prediction.rw_db if key == "rw" else (prediction.stc_db if key == "stc" else None)
         except ValueError:
             # Older imported comparisons may have only a partial spectrum.
@@ -1603,6 +1680,12 @@ class MainWindow(QMainWindow):
             tooltip = "Rw de la predicción en campo difuso; no equivale a un ensayo de laboratorio."
         if self.current_result is not None and value is None and key in ("rw", "stc"):
             detail = "No aplicable al espectro"
+            reason = self.current_result.rating_unavailable_reason(key)
+            if reason:
+                tooltip = reason
+            if (self.current_result.project.incidence == "diffuse"
+                    and self.current_result.project.rating_extrapolated_bands(key)):
+                detail = "Fuera del dominio V6"
         self.rating_detail.setText(detail)
         self.rating_detail.setToolTip(tooltip)
         self.rating_combo.setToolTip(tooltip)
@@ -1624,6 +1707,13 @@ class MainWindow(QMainWindow):
         self.reference_trace = None
         self._refresh_rating()
         result = self.current_result
+        extrapolated = set(result.project.extrapolated_bands_hz(result.frequencies_hz)) if result else set()
+        extrapolation_note = (
+            f"Extrapolación V6: parte de la banda está por debajo de 1,5 f₁₁ "
+            f"({result.project.finite_validity_floor_hz:.1f} Hz). "
+            "El modelo angular no resuelve la rigidez de apoyo ni los modos propios."
+            if extrapolated else ""
+        )
         for index in range(7):
             self.octave_table.setItem(0, index, cell("—"))
             self._style_octave_cell(index)
@@ -1633,6 +1723,11 @@ class MainWindow(QMainWindow):
                 for index, (_, value) in enumerate(octave_summary(result)):
                     self.octave_table.setItem(0, index, cell(f"{value:.1f}"))
                     self._style_octave_cell(index)
+                    if any(frequency in extrapolated for frequency in
+                           result.frequencies_hz[3 * index:3 * index + 3]):
+                        item = self.octave_table.item(0, index)
+                        item.setBackground(QColor("#fff0c2"))
+                        item.setToolTip("Esta octava incluye tercios extrapolados. " + extrapolation_note)
             except ValueError:
                 # A partial imported/comparison spectrum cannot claim a full octave summary.
                 pass
@@ -1650,6 +1745,11 @@ class MainWindow(QMainWindow):
             for row, (frequency, value) in enumerate(zip(result.frequencies_hz, result.tl_db, strict=True)):
                 self.spectrum_table.setItem(row, 0, cell(f"{frequency:g}"))
                 self.spectrum_table.setItem(row, 1, cell(f"{value:.2f}"))
+                if frequency in extrapolated:
+                    for column in (0, 1):
+                        item = self.spectrum_table.item(row, column)
+                        item.setBackground(QColor("#fff0c2"))
+                        item.setToolTip(extrapolation_note)
         plotted = []
         occurrences: dict[int, int] = {}
         for i, prediction in enumerate(self.predictions):
@@ -1670,7 +1770,7 @@ class MainWindow(QMainWindow):
                                         symbol="o" if current else None, symbolSize=4,
                                         symbolBrush=color, symbolPen=color, name=title)
             self.traces.append(trace)
-            self.legend.addItem(trace, title, key=key)
+            self.legend.addItem(trace, title, extrapolation_note if current else "", key=key)
         reference = (fitted_reference(result, self.rating_combo.currentData())
                      if result and self._selected_rating(result) is not None else None)
         if reference:
@@ -1695,6 +1795,11 @@ class MainWindow(QMainWindow):
         self.remove_button.setEnabled(bool(self.predictions))
         self.result_status.setText(("Actual actualizado · línea continua. Comparaciones guardadas · líneas discontinuas."
                                    if result else "Actual sin calcular · las comparaciones guardadas se conservan al editar"))
+        if extrapolated:
+            self.result_status.setText("Bandas en ámbar: extrapolación bajo 1,5 f₁₁. Consulta Modelo e hipótesis.")
+            self.result_status.setToolTip(extrapolation_note)
+        else:
+            self.result_status.setToolTip("")
 
     def add_comparison(self) -> None:
         if self.current_result is None:
@@ -1789,7 +1894,7 @@ class MainWindow(QMainWindow):
 
     def new_project(self) -> None:
         if self._confirm_discard():
-            self._load_into_editor(default_project_v3())
+            self._load_into_editor(default_project_v6())
 
     def open_project(self) -> None:
         filename, _ = QFileDialog.getOpenFileName(self, "Abrir proyecto", "", "Proyecto Noiz (*.json)")
@@ -1866,17 +1971,30 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(dialog)
         info = QTextEdit()
         info.setReadOnly(True)
+        finite = self.project.calculation_model == "finite"
+        selected_model = "V6 · tamaño finito (Davy)" if finite else "V2–V5 · placas infinitas"
+        edges = ", ".join(f"Panel {i + 1}: {panel.edge_loss_factor:g}"
+                          for i, panel in enumerate(self.project.panels))
         text = (
-            "MODELO DE PREDICCIÓN\n\nPlacas isotrópicas infinitas y cámaras mediante matrices de transferencia. "
+            f"MODELO DE PREDICCIÓN\n\n{selected_model}\n"
+            f"Dimensiones: {self.project.width_m:g} × {self.project.height_m:g} m\n"
+            f"Pérdidas adicionales de borde η: {edges}\n\n"
+            "Placas isotrópicas delgadas y cámaras mediante matrices de transferencia. "
             "Se consideran masa, rigidez de flexión y pérdidas de las placas. Las capas de un panel se tratan como "
             "placas que se mueven juntas, sin rigidez compuesta de laminado adherido.\n\n"
+            "En V6, Davy corrige el límite angular con tamaño y frecuencia; las pérdidas de borde "
+            "se suman explícitamente a las del material. Evite duplicar el amortiguamiento del montaje. "
+            "Esta aproximación se recomienda por encima de 1,5 veces la primera frecuencia propia "
+            "f₁₁ de placa simplemente apoyada. No constituye una solución modal de baja frecuencia. "
+            "Su extensión a Double, Triple y Quad independientes requiere validación experimental. "
+            "En el modo infinito las dimensiones no corrigen el espectro y no se admiten pérdidas de borde.\n\n"
             "Los paneles deben ser estructuralmente independientes. Los montantes, perfiles especiales y materiales "
             "anisótropos requieren modelos adicionales; no deben interpretarse como un sistema validado. "
             "El modelo poroso Miki necesita resistividad al flujo, no el campo Damping de un XML.\n\n"
             "Rw y STC se calculan únicamente para incidencia difusa. STC usa el método legado 32/8 y es orientativo. "
             "Es una clasificación de una predicción preliminar, "
             "no un valor certificado por ensayo. No se calculan IIC, Ln,w ni ruido de lluvia. No se incluye flanking "
-            "ni aislamiento entre recintos. Las dimensiones finitas son descriptivas.\n\n"
+            "ni aislamiento entre recintos.\n\n"
             "PROCEDENCIA\nLas propiedades importadas conservan archivo, identificador y SHA-256. "
             "Un catálogo no demuestra validación experimental. Consulta cada ficha en Biblioteca. "
             "Noiz Transmission utiliza modelos documentados propios; no reproduce los algoritmos de INSUL."
@@ -1894,7 +2012,7 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def about(self) -> None:
-        QMessageBox.about(self, "Noiz Transmission", "Noiz Transmission · V5\nDiseño acústico de elementos constructivos.\nCódigo abierto · MIT\nModelos preliminares con procedencia explícita.")
+        QMessageBox.about(self, "Noiz Transmission", f"Noiz Transmission · {__version__}\nDiseño acústico de elementos constructivos.\nCódigo abierto · MIT\nModelos preliminares con procedencia explícita.")
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if self._confirm_discard():

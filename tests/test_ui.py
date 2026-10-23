@@ -18,7 +18,7 @@ from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 from noiz_transmission.application.assemblies import AssemblyPrediction
 from noiz_transmission.application.assembly_services import (
     default_project,
-    default_project_v3,
+    default_project_v6,
     load_assembly,
     save_assembly,
 )
@@ -256,7 +256,7 @@ def test_cancel_close_and_new_preserve_unsaved_project(window, monkeypatch):
     assert window.isVisible()
     monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Discard)
     window.new_project()
-    assert window.project == default_project_v3()
+    assert window.project == default_project_v6()
 
 
 def test_real_engine_single_leaf_reaches_plot_and_band_table(window, qt_app):

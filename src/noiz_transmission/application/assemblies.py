@@ -1,4 +1,4 @@
-"""Immutable, interface-independent construction inputs for the V3 workbench.
+"""Immutable, interface-independent construction inputs for the V6 workbench.
 
 A panel is a stack of co-moving, unbonded isotropic layers. Its bending
 stiffness is the sum of individual stiffnesses, not the stiffness of a bonded
@@ -8,11 +8,18 @@ persistence; the prediction service must explicitly refuse unsupported physics.
 
 from __future__ import annotations
 
+import math
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from noiz_transmission.application.materials import finite_number, nonempty_string
 from noiz_transmission.catalog import CatalogEntry, entry_from_dict, entry_to_dict
-from noiz_transmission.core.ratings import legacy_stc
+from noiz_transmission.core.finite_panel import FinitePanel
+from noiz_transmission.core.ratings import (
+    ISO717_FREQUENCIES_HZ,
+    STC_FREQUENCIES_HZ,
+    legacy_stc,
+)
 
 ELEMENT_TYPES = frozenset({"wall", "ceiling", "floor", "roof", "glazing", "door", "porous"})
 ELEMENT_PANEL_LIMITS = {"wall": 4, "ceiling": 4, "floor": 3, "roof": 2,
@@ -184,9 +191,11 @@ class Layer:
 class Panel:
     layers: tuple[Layer, ...]
     name: str = "Panel"
+    edge_loss_factor: float = 0.0
 
     def __post_init__(self) -> None:
         nonempty_string(self.name, "name")
+        _nonnegative(self.edge_loss_factor, "edge_loss_factor")
         if (not isinstance(self.layers, tuple) or not 1 <= len(self.layers) <= 6
                 or any(not isinstance(layer, Layer) for layer in self.layers)):
             raise ValueError("Cada panel requiere una tupla de una a seis capas Layer.")
@@ -247,6 +256,9 @@ class AssemblyProject:
     porous: PorousSettings = field(default_factory=PorousSettings)
     floor: FloorSettings = field(default_factory=FloorSettings)
     excitation: str = "airborne"
+    # Historical API constructors retain their equations. New desktop projects
+    # opt into the finite approximation through default_project_v6().
+    calculation_model: str = "infinite"
 
     def __post_init__(self) -> None:
         nonempty_string(self.name, "name")
@@ -270,6 +282,8 @@ class AssemblyProject:
                 raise ValueError(f"{name} requiere {cls.__name__}.")
         if self.incidence not in ("diffuse", "normal"):
             raise ValueError("incidence debe ser diffuse o normal.")
+        if self.calculation_model not in ("infinite", "finite"):
+            raise ValueError("calculation_model debe ser infinite o finite.")
         for name in ("width_m", "height_m", "air_density_kg_m3", "sound_speed_m_s"):
             finite_number(getattr(self, name), name, positive=True)
         angle = finite_number(self.limiting_angle_deg, "limiting_angle_deg", positive=True)
@@ -283,6 +297,81 @@ class AssemblyProject:
         object.__setattr__(self, "floor_cover", _catalog_snapshot(
             self.floor_cover, "floor_cover", "floor_cover",
         ))
+
+    @property
+    def first_panel_modes_hz(self) -> tuple[float, ...]:
+        """Simply supported f11 diagnostics for the finite solid-panel route.
+
+        These are domain checks, not resonances resolved in the transfer model.
+        No modes are assigned to the historical infinite model or free porous
+        slab. An entirely disabled panel cannot be classified or calculated.
+        """
+        if self.calculation_model != "finite" or self.element_type == "porous":
+            return ()
+        size = FinitePanel(self.width_m, self.height_m)
+        modes = []
+        for panel in self.panels:
+            active = tuple(layer for layer in panel.layers if layer.enabled)
+            if not active:
+                raise ValueError(f"{panel.name}: active al menos una capa antes de calcular.")
+            try:
+                mass = sum(layer.density_kg_m3 * layer.thickness_mm / 1000 * layer.count
+                           for layer in active)
+                rigidity = sum(layer.young_modulus_pa * (layer.thickness_mm / 1000) ** 3
+                               * layer.count / (12 * (1 - layer.poisson_ratio**2))
+                               for layer in active)
+            except (OverflowError, ZeroDivisionError) as exc:
+                raise ValueError("Propiedades de placa fuera del intervalo representable.") from exc
+            modes.append(size.first_mode_hz(mass, rigidity))
+        return tuple(modes)
+
+    @property
+    def finite_validity_floor_hz(self) -> float:
+        """Lower limit of the finite angular approximation, 1.5 max(f11)."""
+        return 1.5 * max(self.first_panel_modes_hz, default=0.0)
+
+    def extrapolated_bands_hz(self, frequencies_hz: Sequence[float]) -> tuple[float, ...]:
+        """Nominal thirds with any part below the finite model's lower limit.
+
+        Exact base-10 lower edges are used. This affects physical validity,
+        independently of numerical integration tolerance or convergence.
+        """
+        floor = self.finite_validity_floor_hz
+        if not floor:
+            return ()
+        result = []
+        for value in frequencies_hz:
+            frequency = finite_number(value, "frequency_hz", positive=True)
+            centre_index = round(10 * math.log10(frequency / 1000))
+            lower_edge = 1000 * 10 ** (centre_index / 10 - .05)
+            if lower_edge < floor:
+                result.append(frequency)
+        return tuple(result)
+
+    def rating_extrapolated_bands(self, rating: str) -> tuple[float, ...]:
+        """Check Rw and STC independently on their respective required bands."""
+        if rating not in ("rw", "stc"):
+            raise ValueError("rating debe ser rw o stc.")
+        return self.extrapolated_bands_hz(
+            ISO717_FREQUENCIES_HZ if rating == "rw" else STC_FREQUENCIES_HZ,
+        )
+
+    def rating_unavailable_reason(self, rating: str) -> str:
+        """Why a principal Rw/STC classification is withheld for these inputs."""
+        if rating not in ("rw", "stc"):
+            raise ValueError("rating debe ser rw o stc.")
+        if self.excitation != "airborne":
+            return "La clasificación requiere transmisión aérea."
+        if self.incidence != "diffuse":
+            return "La clasificación requiere incidencia difusa."
+        affected = self.rating_extrapolated_bands(rating)
+        if affected:
+            name = "Rw" if rating == "rw" else "STC"
+            bands = ", ".join(f"{value:g}" for value in affected)
+            return (f"{name} no emitido: bandas {bands} Hz parcial o totalmente por debajo "
+                    f"de 1.5 f₁₁ = {self.finite_validity_floor_hz:.6g} Hz; "
+                    "la aproximación finita no resuelve los modos de esta región.")
+        return ""
 
 
 @dataclass(frozen=True)
@@ -298,6 +387,10 @@ class AssemblyPrediction:
     warnings: tuple[str, ...]
     model_name: str = "transfer-matrix-plate-1"
 
+    def rating_unavailable_reason(self, rating: str) -> str:
+        """Human-readable reason for withholding a principal classification."""
+        return self.project.rating_unavailable_reason(rating)
+
     @property
     def stc_db(self) -> int | None:
         """Indicative legacy 32/8 STC, calculated from TL independently of Rw.
@@ -307,6 +400,6 @@ class AssemblyPrediction:
         the suffix follows the existing ``rw_db`` API convention only.
         Neither normal-incidence TL nor an impact spectrum yields STC here.
         """
-        if self.project.incidence != "diffuse" or self.project.excitation != "airborne":
+        if self.rating_unavailable_reason("stc"):
             return None
         return legacy_stc(self.frequencies_hz, self.tl_db).stc
