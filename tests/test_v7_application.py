@@ -119,7 +119,7 @@ def test_schema5_roundtrip_preserves_bridge_parameters_and_old_model_variants(do
     original = path.read_bytes()
     active, variants = load_workspace(path)
     assert active == project and variants == (legacy,)
-    assert json.loads(original)["schema_version"] == 5
+    assert json.loads(original)["schema_version"] == 6
     assert variants[0].calculation_model == "finite"
     save_workspace(active, variants, path)
     assert path.read_bytes() == original

@@ -4,15 +4,16 @@ Aplicación open source de escritorio para estudiar el aislamiento acústico de
 **elementos constructivos**. Python, PySide6, NumPy, SciPy y PyQtGraph; motor
 independiente de la interfaz y catálogo de **3.629 registros** incluido.
 
-**Versión 0.7.0 · transmisión aérea y por montantes, gráfico y tabla simultáneos.**
-Esta versión implementa ecuaciones publicadas de Davy/Hansen con sus hipótesis.
+**Versión 0.7.1 · cálculo automático y selección del frame sin parámetros avanzados.**
+Single conserva el motor finito V7. Double combina la vía aérea Davy/Hansen con
+puentes rígidos genéricos de Sharp (1978), con las hipótesis registradas.
 Todavía no demuestra una tolerancia experimental ni equivalencia con Strutt o INSUL.
 
-![V7: cálculo de doble pared, aristas negras y tabla junto al gráfico](docs/images/workbench-v7.png)
+![V7.1: doble pared calculada automáticamente, sin parámetros de puente obligatorios](docs/images/workbench-v71.png)
 
 ## Descargar y abrir
 
-Descarga el [ZIP V7](https://github.com/oscargit010502/Noiz-Transmission/archive/refs/heads/codex/noiz-transmission-v7.zip),
+Descarga el [ZIP V7.1](https://github.com/oscargit010502/Noiz-Transmission/archive/refs/heads/codex/noiz-transmission-v7-1.zip),
 extráelo en una carpeta nueva, instala [uv](https://docs.astral.sh/uv/getting-started/installation/)
 y ejecuta **INICIAR_NOIZ.cmd** en Windows. La carpeta debe contener `pyproject.toml`.
 La instalación por copia evita el problema de vínculos permanentes de OneDrive.
@@ -24,43 +25,42 @@ uv sync --locked --extra desktop
 uv run --locked --extra desktop noiz-transmission
 ```
 
-Abre **examples/v7_double_steel.noiz.json** o **v7_double_timber.noiz.json** y pulsa
-**F5**. Ambos son ejemplos sintéticos completos, con dos hojas de yeso, cámara,
-absorbente y montantes. Sus propiedades ilustran el cálculo; no son ensayos ni
-fichas de un fabricante. Consulta [cómo probarlo](PROBAR_EN_WINDOWS.md).
+Al abrir, la partición Single inicial ya se calcula. Abre
+**examples/v71_double_steel.noiz.json** o **v71_double_timber.noiz.json** y cambia
+materiales, espesores, frame o relleno: los resultados se actualizan automáticamente.
+**F5** sigue disponible para refrescar manualmente. Los ejemplos son sintéticos;
+no son ensayos ni fichas comerciales. Consulta [cómo probarlo](PROBAR_EN_WINDOWS.md).
 
-## Cálculo V7
+## Cálculo V7.1
 
-- **Single:** integración angular y por tercios de octava, tamaño finito de Davy,
-  coincidencia y pérdidas adicionales de borde explícitas. En una hoja homogénea
-  se aplica el límite de espesor de Ljunggren/Hansen a los centros de banda.
-- **Double:** suma energética de transmisión aérea y por montantes. Madera con
-  conexiones puntuales; acero con conexiones puntuales, lineales o selección
-  según separación de fijaciones. La resonancia incorpora flexión entre montantes.
-- **Absorbente:** espesor y resistividad explícitos mediante una aproximación de
-  absorción Miki; alternativamente se declara la absorción efectiva de cámara.
-  El campo Damping del XML no se transforma en resistividad.
-- **Unión de acero:** especifica su flexibilidad (*compliance*) en
-  **Frame → Puente estructural…**. Flexibilidad puntual y lineal tienen unidades
-  distintas. La correlación por calibre se mantiene experimental: el texto
-  consultado no define su convención de unidades y no se convierte desde mm.
-- **Bastidores separados:** idealización sin puentes comunes. Montantes alternados
-  sobre soleras compartidas no son automáticamente independientes.
-- Se conservan **Triple/Quad de hojas independientes**, gases y Facing mediante
-  las rutas anteriores. Cambiar de modelo es explícito; proyectos V6 mantienen
-  sus fórmulas al abrirse. Los nuevos proyectos se guardan con esquema 5.
+- **Actualización automática:** 200 ms para agrupar ediciones; un solo cálculo
+  activo. Una edición cancela el resultado anterior y calcula la última composición.
+  Las entradas incompletas muestran su error en línea y se recuperan al corregirlas.
+- **Double:** selección automática de contacto lineal, puntual o sin puente común
+  según el frame. No exige compliancia, calibre de correlación ni separación de
+  tornillos. **Detalles del frame…** consulta hipótesis, sin campos obligatorios.
+- **Absorbente:** utiliza la resistividad explícita cuando existe. Si falta,
+  toma una fibra de referencia de Hansen, tabla 7.12: **20.000 Pa·s/m²**. Miki
+  usa el espesor real, también 40 mm, sin cambio artificial de modelo a 50 mm.
+  Es una hipótesis interna identificada, no una propiedad medida del producto.
+- **Single:** integración angular y energética de placa finita de V7; coincidencia,
+  pérdidas de borde explícitas y límite de espesor de Ljunggren/Hansen.
+- **Proyectos anteriores:** conservan su modelo. En Double → Frame, **Usar V7.1**
+  permite actualizar explícitamente el cálculo. Los nuevos archivos usan esquema 6.
+- Se mantienen **Triple/Quad de hojas independientes**, gases y Facing mediante
+  las rutas anteriores; no se extiende el puente de Double automáticamente a ellas.
 
-Las ecuaciones, correcciones e interpretaciones se detallan en
-[fuentes V7](docs/v7-reference-review.md) y [notas de entrega](docs/release-v7.md).
-Los modelos de Davy y Sharp no se mezclan mediante un empalme arbitrario. La
-corrección de tamaño finito no se presenta como Sewell; el límite de espesor no
-es un solucionador completo de ondas de cortante. No se resuelve un modelo modal
-completo a baja frecuencia.
+La aproximación rígida elimina la necesidad de una compliancia de entrada, pero
+**no caracteriza la flexibilidad real del acero delgado ni de aisladores comerciales**.
+Dos frames con iguales dimensiones y la misma topología genérica pueden dar el
+mismo TL. No se añaden mejoras por marca ni se ajusta la curva a una captura de INSUL.
+El cálculo avanzado V7 permanece disponible para reproducir datos explícitos.
 
-La consulta directa a [Strutt](https://strutt.arup.com/help/) quedó bloqueada por
-la política de red del entorno. Las ecuaciones incorporadas se contrastaron con
-los libros aportados; queda pendiente verificar la correspondencia exacta con
-Transmission Loss Prediction de Strutt y sus fuentes primarias.
+Véanse [notas V7.1](docs/release-v71.md), [fuentes y ecuaciones](docs/v71-reference-review.md)
+y [verificaciones independientes](docs/v71-validation.md). La combinación de caminos
+se identifica como aproximación de ingeniería; no como una implementación literal
+de Sharp, validación experimental ni equivalencia con INSUL/Strutt. La corrección
+finita no es Sewell y el límite de espesor no resuelve todas las ondas de cortante.
 
 ## Interfaz y representación
 
@@ -78,10 +78,10 @@ Transmission Loss Prediction de Strutt y sus fuentes primarias.
 
 ## Alcance y comprobaciones
 
-| Función | Estado en V7 |
+| Función | Estado en V7.1 |
 | --- | --- |
 | Single isotrópico finito | Integración de placa y pérdidas, con dominio de validez indicado |
-| Double de yeso con madera/acero | Vías aérea y estructural con parámetros explícitos |
+| Double con frame automático | Vía aérea y puente rígido genérico, con hipótesis internas trazables |
 | Triple/Quad independientes | Modelo anterior de matrices de transferencia |
 | Aisladores comerciales y montantes especiales | Representación esquemática; requieren caracterización de la unión |
 | Rw / STC | Clasificación de predicción; STC conserva el procedimiento legado 32/8 |
@@ -92,7 +92,7 @@ Las verificaciones independientes comprueban ecuaciones, unidades, reciprocidad,
 resonancias y suma de energías. Se incluyen cuatro espectros publicados de paredes
 con montantes, identificando los datos que faltan para reproducir sus ensayos.
 No se ajustan esos datos ausentes para declarar una precisión ficticia. Véase
-[validación V7](docs/v7-validation.md).
+[validación V7.1](docs/v71-validation.md).
 
 ## Materiales y datos locales
 
@@ -125,13 +125,13 @@ explícitos. Impacto, lluvia y modelos dinámicos específicos de aisladores sig
 
 ```shell
 uv sync --locked
-uv run noiz assembly examples/v7_single.noiz.json --output-dir artifacts/v7
-uv run noiz assembly examples/v7_double_steel.noiz.json --output-dir artifacts/steel
-uv run noiz assembly examples/v7_double_timber.noiz.json --output-dir artifacts/timber
+uv run noiz assembly examples/v71_single.noiz.json --output-dir artifacts/v7
+uv run noiz assembly examples/v71_double_steel.noiz.json --output-dir artifacts/steel
+uv run noiz assembly examples/v71_double_timber.noiz.json --output-dir artifacts/timber
 uv run noiz catalog import ruta/Material_INSUL10.xml ruta/Stud_INSUL10.xml
 ```
 
-Cada cálculo genera `result.json`, `spectra.csv` y `report.html`. Los ejemplos V7
+Cada cálculo genera `result.json`, `spectra.csv` y `report.html`. Los ejemplos V7.1
 usan materiales sintéticos y guardan las condiciones de cálculo. Los ejemplos
 anteriores permanecen disponibles para reproducibilidad.
 

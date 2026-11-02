@@ -1,0 +1,54 @@
+{
+  "version": "0.7.1",
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "python": "3.13.5",
+  "repeats": 5,
+  "scope": "predict_assembly including validation; no GUI/cache/export; synthetic cases",
+  "cases": [
+    {
+      "project": "examples/v71_single.noiz.json",
+      "model": "davy-air-sharp-bridge-1",
+      "seconds": [
+        0.18232439600978978,
+        0.18535920399881434,
+        0.19709525200596545,
+        0.20257172899437137,
+        0.2032366589992307
+      ],
+      "median_seconds": 0.19709525200596545,
+      "rw_db": 30,
+      "stc": 28,
+      "band_count": 21
+    },
+    {
+      "project": "examples/v71_double_timber.noiz.json",
+      "model": "davy-air-sharp-bridge-1",
+      "seconds": [
+        0.00304738299746532,
+        0.0029445179970934987,
+        0.0022076250024838373,
+        0.0023491280007874593,
+        0.0029414930031634867
+      ],
+      "median_seconds": 0.0029414930031634867,
+      "rw_db": 39,
+      "stc": 40,
+      "band_count": 21
+    },
+    {
+      "project": "examples/v71_double_steel.noiz.json",
+      "model": "davy-air-sharp-bridge-1",
+      "seconds": [
+        0.002837895997799933,
+        0.002696563009521924,
+        0.002329569004359655,
+        0.0023235300031956285,
+        0.002505916010704823
+      ],
+      "median_seconds": 0.002505916010704823,
+      "rw_db": 39,
+      "stc": 40,
+      "band_count": 21
+    }
+  ]
+}

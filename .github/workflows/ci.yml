@@ -35,6 +35,7 @@ jobs:
       - run: uv run noiz assembly examples/v7_single.noiz.json --output-dir artifacts/v7-single
       - run: uv run noiz assembly examples/v7_double_timber.noiz.json --output-dir artifacts/v7-timber
       - run: uv run noiz assembly examples/v7_double_steel.noiz.json --output-dir artifacts/v7-steel
+      - run: uv run noiz assembly examples/v71_single.noiz.json examples/v71_double_steel.noiz.json examples/v71_double_timber.noiz.json --output-dir artifacts/v71
       - run: uv run python -m build --installer uv
       - uses: actions/upload-artifact@v4
         with:
@@ -50,3 +51,4 @@ jobs:
             artifacts/v7-single/*
             artifacts/v7-timber/*
             artifacts/v7-steel/*
+            artifacts/v71/*

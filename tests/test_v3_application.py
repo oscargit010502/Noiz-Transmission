@@ -160,7 +160,7 @@ def test_current_schema_roundtrip_includes_all_settings(single, tmp_path):
     path = tmp_path / "v3.json"
     save_assembly(project, path)
     assert load_assembly(path) == project
-    assert json.loads(path.read_text())["schema_version"] == 5
+    assert json.loads(path.read_text())["schema_version"] == 6
     payload = json.loads(path.read_text())
     payload["project"]["leak"]["unknown_parameter"] = 4
     path.write_text(json.dumps(payload))

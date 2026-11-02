@@ -1,0 +1,118 @@
+{
+  "schema_version": 6,
+  "model_name": "davy-air-sharp-bridge-1",
+  "project": {
+    "name": "V7.1 Double steel · cálculo automático",
+    "panels": [
+      {
+        "layers": [
+          {
+            "name": "Placa de yeso · referencia sintética",
+            "thickness_mm": 12.7,
+            "density_kg_m3": 660,
+            "young_modulus_pa": 2100000000.0,
+            "loss_factor": 0.03,
+            "poisson_ratio": 0.25,
+            "count": 1,
+            "catalog_entry": null,
+            "profile": null,
+            "enabled": true
+          }
+        ],
+        "name": "Panel",
+        "edge_loss_factor": 0.0
+      },
+      {
+        "layers": [
+          {
+            "name": "Placa de yeso · referencia sintética",
+            "thickness_mm": 12.7,
+            "density_kg_m3": 660,
+            "young_modulus_pa": 2100000000.0,
+            "loss_factor": 0.03,
+            "poisson_ratio": 0.25,
+            "count": 1,
+            "catalog_entry": null,
+            "profile": null,
+            "enabled": true
+          }
+        ],
+        "name": "Panel 2",
+        "edge_loss_factor": 0.0
+      }
+    ],
+    "cavities": [
+      {
+        "depth_mm": 89,
+        "absorber": null,
+        "absorber_thickness_mm": 50,
+        "flow_resistivity_pa_s_m2": null,
+        "frame_type": "steel",
+        "stud_width_mm": 38,
+        "stud_depth_mm": 89,
+        "stud_spacing_mm": 600,
+        "absorber_count": 1,
+        "stud": null,
+        "gas": "air",
+        "stud_configuration": "shared",
+        "fastener_spacing_mm": 300,
+        "stud_attachment": "auto",
+        "steel_gauge": null,
+        "steel_section": "TC",
+        "point_compliance_m_n": null,
+        "line_compliance_m2_n": null,
+        "cavity_absorption": null
+      }
+    ],
+    "element_type": "wall",
+    "width_m": 2.4,
+    "height_m": 2.7,
+    "incidence": "diffuse",
+    "air_density_kg_m3": 1.21,
+    "sound_speed_m_s": 343,
+    "limiting_angle_deg": 78,
+    "leak_percentage": 0,
+    "floor_cover": null,
+    "notes": "Ejemplo sintético, no ensayo ni calibración contra INSUL. Sin compliancia ni resistividad de entrada; el modelo resuelve contactos genéricos y una fibra de referencia publicada. Edita Frame y espesor: los resultados se actualizan automáticamente.",
+    "facing": {
+      "enabled": false,
+      "material": null,
+      "thickness_mm": 0,
+      "flow_resistivity_pa_s_m2": null,
+      "count": 1
+    },
+    "leak": {
+      "enabled": false,
+      "kind": "slit",
+      "method": "gomperts",
+      "position": "middle",
+      "height_mm": 1,
+      "length_mm": 1000,
+      "depth_mm": 100,
+      "radius_mm": 1,
+      "mechel_sealed": false,
+      "mass_side1_kg_m2": 0,
+      "mass_side2_kg_m2": 0,
+      "mechel_absorption": false,
+      "cavity_empty": true,
+      "cavity_absorption": null
+    },
+    "rainfall": {
+      "rain_type": "laboratory",
+      "laboratory_class": "heavy",
+      "natural_mm_h": 40,
+      "rainfall_area_m2": 1
+    },
+    "porous": {
+      "material": null,
+      "thickness_mm": 50,
+      "flow_resistivity_pa_s_m2": null
+    },
+    "floor": {
+      "mode": "measured",
+      "base_floor": "lightweight"
+    },
+    "excitation": "airborne",
+    "calculation_model": "auto"
+  }
+}

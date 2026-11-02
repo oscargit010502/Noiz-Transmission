@@ -71,7 +71,7 @@ def test_current_schema_roundtrip_retains_v6_model_losses_and_variants(tmp_path)
     assert loaded == active
     assert variants == (legacy,)
     payload = json.loads(encoded)
-    assert payload["schema_version"] == 5
+    assert payload["schema_version"] == 6
     assert payload["model_name"] == FINITE_MODEL_ID
     assert payload["project"]["panels"][0]["edge_loss_factor"] == .015
     save_workspace(loaded, variants, path)

@@ -1,6 +1,7 @@
 """V7 shows numeric TL and the locked square plot in the same results view."""
 
 import os
+import time
 from dataclasses import replace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -14,7 +15,7 @@ from PySide6.QtCore import QEvent, QPoint, QRect, Qt
 from PySide6.QtWidgets import QApplication
 
 from noiz_transmission.application.assemblies import Cavity
-from noiz_transmission.application.assembly_services import predict_assembly
+from noiz_transmission.application.assembly_services import default_project_v7, predict_assembly
 from noiz_transmission.ui.main_window import MainWindow
 
 
@@ -27,10 +28,13 @@ def app():
 def window(app, monkeypatch, tmp_path):
     monkeypatch.setenv("NOIZ_CATALOG_PATH", str(tmp_path / "missing.json"))
     widget = MainWindow()
-    widget.current_result = predict_assembly(widget.project)
-    widget._refresh_results()
+    widget._load_into_editor(default_project_v7())
     widget.show()
-    app.processEvents()
+    deadline = time.monotonic() + 5
+    while widget.current_result is None and time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(.005)
+    assert widget.current_result is not None
     yield widget
     widget._saved_project = widget.project
     widget._saved_variants = dict(widget._variants)

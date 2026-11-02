@@ -493,6 +493,7 @@ def davy_double_bands(
     cavity_absorption: float | None = None, flow_resistivity_pa_s_m2: float | None = None,
     ideal_absorber: bool = False, frequencies_hz: ArrayLike = NOMINAL_BANDS_HZ,
     air_density: float = 1.21, sound_speed: float = 343.0,
+    minimum_background_absorption: float | None = None,
     cancel_event: Event | None = None,
 ) -> DavyResult:
     """Airborne + studborne Davy double leaf, Hansen eqs.7.88–7.107.
@@ -500,6 +501,10 @@ def davy_double_bands(
     Empty cavity alpha=min(.1,kd). Declared adequate mineral-fibre absorption
     >=50 mm may use alpha=min(1,kd). Other fills need an explicit cavity alpha
     or measured flow resistivity for the separately labelled Miki proxy.
+
+    ``minimum_background_absorption`` is an opt-in engineering envelope for
+    the Miki proxy used by the V7.1 automatic model. It is not a published Davy
+    correction. Its default is None, preserving the saved V7 route exactly.
     """
     _cancel(cancel_event)
     f = _frequencies(frequencies_hz)
@@ -519,6 +524,11 @@ def davy_double_bands(
             raise ValueError("cavity_absorption must be in (0,1]")
     if flow_resistivity_pa_s_m2 is not None:
         flow_resistivity_pa_s_m2 = _positive_scalar(flow_resistivity_pa_s_m2, "flow_resistivity_pa_s_m2")
+    if minimum_background_absorption is not None:
+        minimum_background_absorption = _positive_scalar(
+            minimum_background_absorption, "minimum_background_absorption")
+        if minimum_background_absorption > 1:
+            raise ValueError("minimum_background_absorption must be in (0,1]")
     if ideal_absorber and thickness < .05:
         raise ValueError("The ideal mineral-fibre cavity approximation requires at least 50 mm")
     if thickness > 0 and cavity_absorption is None and flow_resistivity_pa_s_m2 is None and not ideal_absorber:
@@ -530,6 +540,12 @@ def davy_double_bands(
     elif thickness and flow_resistivity_pa_s_m2:
         warnings.append("Absorción de cámara aproximada mediante absorción difusa Miki de una capa con "
                         "respaldo rígido. Esta sustitución propia de α no equivale a un ensayo de la cámara.")
+        if minimum_background_absorption is not None:
+            warnings.append(
+                f"Envolvente de ingeniería para absorción: α=min(kd,max({minimum_background_absorption:g}, "
+                "α_Miki)). Conserva la referencia de pérdidas de la cámara vacía al añadir relleno. "
+                "No es una corrección publicada de Davy ni una demostración experimental."
+            )
         if np.any((f / flow_resistivity_pa_s_m2 <= .01) | (f / flow_resistivity_pa_s_m2 >= 1)):
             warnings.append("Miki se extrapola fuera de 0,01 < f/σ < 1; incertidumbre no cuantificada.")
     elif thickness:
@@ -568,7 +584,10 @@ def davy_double_bands(
         if cavity_absorption is not None:
             alpha = np.minimum(kd, cavity_absorption)
         elif thickness > 0 and flow_resistivity_pa_s_m2 is not None:
-            alpha = np.minimum(kd, _miki_absorption(frequency, thickness, flow_resistivity_pa_s_m2, rho, c))
+            alpha = _miki_absorption(frequency, thickness, flow_resistivity_pa_s_m2, rho, c)
+            if minimum_background_absorption is not None:
+                alpha = np.maximum(alpha, minimum_background_absorption)
+            alpha = np.minimum(kd, alpha)
         else:
             alpha = np.minimum(kd, 1. if thickness > 0 else .1)
         a1, a2 = np.pi * frequency * m1 / (rho * c), np.pi * frequency * m2 / (rho * c)

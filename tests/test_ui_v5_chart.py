@@ -5,6 +5,7 @@ import math
 import os
 import subprocess
 import sys
+import time
 from dataclasses import replace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -16,7 +17,7 @@ pytest.importorskip("pyqtgraph")
 
 from PySide6.QtCore import QEvent, QPoint
 from PySide6.QtGui import QFontMetrics
-from PySide6.QtWidgets import QApplication, QCheckBox, QStyleOptionViewItem
+from PySide6.QtWidgets import QApplication, QStyleOptionViewItem
 
 from noiz_transmission.application.assembly_services import predict_assembly
 from noiz_transmission.core.ratings import (
@@ -39,7 +40,11 @@ def window(app, monkeypatch, tmp_path):
     monkeypatch.setenv("NOIZ_CATALOG_PATH", str(tmp_path / "missing.json"))
     widget = MainWindow()
     widget.show()
-    app.processEvents()
+    deadline = time.monotonic() + 5
+    while widget.current_result is None and time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(.005)
+    assert widget.current_result is not None
     yield widget
     widget._saved_project = widget.project
     widget._saved_variants = dict(widget._variants)
@@ -115,6 +120,8 @@ def test_reference_switch_matches_rating_procedures_without_recalculation(window
 
 
 def test_unrated_or_missing_spectrum_has_no_reference(window):
+    window.current_result = None
+    window._refresh_results()
     assert window.reference_trace is None
     result = predict_assembly(window.project)
     partial = replace(result, frequencies_hz=(100., 500.), tl_db=(10., 20.), rw_db=None)
@@ -137,7 +144,9 @@ def test_comparison_legend_wraps_outside_plot_and_controls_visibility(window, ap
     assert len(window.legend.items) == 8  # Six alternatives, actual TL, actual reference.
     assert_square_and_external_legend(window)
     assert window.legend.verticalScrollBar().maximum() > 0
-    checks = window.legend.findChildren(QCheckBox)
+    # Access current rows, excluding widgets awaiting Qt deferred deletion
+    # after the automatic initial result was replaced by this comparison set.
+    checks = list(window.legend.checkboxes.values())
     checks[0].setChecked(False)
     assert not window.traces[0].isVisible()
     checks[0].setChecked(True)
@@ -227,15 +236,18 @@ def test_octave_summary_has_complete_centered_header_and_data(window, app):
 @pytest.mark.parametrize("scale", ["1.25", "1.5"])
 def test_high_dpi_axes_and_octave_summary(scale, tmp_path):
     script = '''
-import json
+import json, time
 from PySide6.QtWidgets import QApplication, QStyleOptionViewItem
 from noiz_transmission.application.assembly_services import predict_assembly
 from noiz_transmission.ui.main_window import MainWindow
 app = QApplication([])
 w = MainWindow()
 w.show()
-w.current_result = predict_assembly(w.project)
-w._refresh_results()
+deadline = time.monotonic() + 5
+while w.current_result is None and time.monotonic() < deadline:
+    app.processEvents()
+    time.sleep(.005)
+assert w.current_result is not None
 measurements=[]
 for width,height in ((1366,768),(1280,720),(1024,680)):
     w.resize(width,height)

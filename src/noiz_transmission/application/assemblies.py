@@ -308,8 +308,8 @@ class AssemblyProject:
                 raise ValueError(f"{name} requiere {cls.__name__}.")
         if self.incidence not in ("diffuse", "normal"):
             raise ValueError("incidence debe ser diffuse o normal.")
-        if self.calculation_model not in ("infinite", "finite", "davy"):
-            raise ValueError("calculation_model debe ser infinite, finite o davy.")
+        if self.calculation_model not in ("infinite", "finite", "davy", "auto"):
+            raise ValueError("calculation_model debe ser infinite, finite, davy o auto.")
         for name in ("width_m", "height_m", "air_density_kg_m3", "sound_speed_m_s"):
             finite_number(getattr(self, name), name, positive=True)
         angle = finite_number(self.limiting_angle_deg, "limiting_angle_deg", positive=True)
@@ -342,7 +342,7 @@ class AssemblyProject:
         with Table 7.10's lower applicability boundary, rather than full-wall f11.
         An entirely disabled panel cannot be classified or calculated.
         """
-        if self.calculation_model not in ("finite", "davy") or self.element_type == "porous":
+        if self.calculation_model not in ("finite", "davy", "auto") or self.element_type == "porous":
             return ()
         size = FinitePanel(self.width_m, self.height_m)
         modes = []
@@ -437,6 +437,7 @@ class AssemblyPrediction:
     model_name: str = "transfer-matrix-plate-1"
     airborne_transmission: tuple[float, ...] = ()
     studborne_transmission: tuple[float, ...] = ()
+    resolved_parameters: dict = field(default_factory=dict)
 
     def rating_unavailable_reason(self, rating: str) -> str:
         """Human-readable reason for withholding a principal classification."""

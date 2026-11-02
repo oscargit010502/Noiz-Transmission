@@ -10,7 +10,7 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-echo Preparando Noiz Transmission 0.7.0...
+echo Preparando Noiz Transmission 0.7.1...
 uv sync --locked --extra desktop
 if errorlevel 1 goto error
 uv run --locked --extra desktop noiz-transmission

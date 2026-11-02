@@ -299,7 +299,7 @@ def test_roundtrip_full_snapshot_and_manual_overrides(single, catalog_entry, tmp
     save_assembly(loaded, path)
     assert path.read_bytes() == first
     payload = json.loads(first)
-    assert payload["schema_version"] == 5
+    assert payload["schema_version"] == 6
     assert payload["model_name"] == "transfer-matrix-plate-1"
     assert payload["project"]["panels"][0]["layers"][0]["catalog_entry"]["raw_fields"] == catalog_entry.raw_fields
     result = predict_assembly(replace(loaded, incidence="normal"))
@@ -336,7 +336,7 @@ def test_duplicate_json_keys_and_nonfinite_literals_are_rejected(single, tmp_pat
     path = tmp_path / "tampered.json"
     save_assembly(single, path)
     original = path.read_text()
-    path.write_text(original.replace('"schema_version": 5', '"schema_version": 5, "schema_version": 5'))
+    path.write_text(original.replace('"schema_version": 6', '"schema_version": 6, "schema_version": 6'))
     with pytest.raises(ValueError, match="repetido"):
         load_assembly(path)
     path.write_text(original.replace('"width_m": 2.4', '"width_m": NaN'))

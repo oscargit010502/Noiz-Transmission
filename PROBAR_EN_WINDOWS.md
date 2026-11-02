@@ -1,11 +1,11 @@
-# Probar Noiz Transmission V7 en Windows
+# Probar Noiz Transmission V7.1 en Windows
 
 La ventana se abre en tu ordenador. Esta entrega contiene código y un lanzador
 `.cmd`; todavía no contiene un instalador `.exe`.
 
 ## Descargar y abrir
 
-1. Descarga el [ZIP V7 desde GitHub](https://github.com/oscargit010502/Noiz-Transmission/archive/refs/heads/codex/noiz-transmission-v7.zip)
+1. Descarga el [ZIP V7.1 desde GitHub](https://github.com/oscargit010502/Noiz-Transmission/archive/refs/heads/codex/noiz-transmission-v7-1.zip)
    y selecciona **Extraer todo**. La carpeta del proyecto debe contener `INICIAR_NOIZ.cmd`, `pyproject.toml`,
    `uv.lock`, `examples` y `src`. Usa una carpeta nueva para conservar tus versiones anteriores.
 2. Instala **uv** siguiendo sus
@@ -32,32 +32,36 @@ uv run --locked --extra desktop noiz-transmission
 La aplicación configura la instalación por copia tanto en el proyecto como en el lanzador.
 Esto evita el error **396** de OneDrive con vínculos permanentes. Si tu instalación
 anterior quedó incompleta, cierra Noiz y repite los comandos anteriores en la
-carpeta extraída de V7; uv completará las dependencias. No necesitas borrar el
+carpeta extraída de V7.1; uv completará las dependencias. No necesitas borrar el
 catálogo ni tus proyectos.
 
 No uses `/workspace/...` en tu PC: esa es la ubicación de la copia en la nube.
 
-## Probar V7: yeso, cámara, lana y montantes
+## Probar V7.1 sin pulsar Calcular
 
-1. Abre `examples/v7_double_steel.noiz.json` y pulsa **F5**. Es un ejemplo sintético
-   completo: no hace falta importar materiales ni completar campos para probarlo.
-2. En **Double → Frame 1**, revisa cámara, separación de montantes y relleno.
-   **Puente estructural…** muestra separación de fijaciones y flexibilidad de la
-   unión. El ejemplo usa un valor supuesto de demostración, no medido.
-3. Abre `examples/v7_double_timber.noiz.json` para el modelo de madera y
-   `examples/v7_single.noiz.json` para una sola hoja.
-4. Los valores TL aparecen a la derecha del gráfico, al mismo tiempo. Usa la
-   barra vertical de la tabla para consultar las 21 bandas. La rueda y el arrastre
-   no cambian los ejes; la leyenda permite ocultar curvas.
-5. Para tu construcción real, introduce resistividad documentada del relleno o
-   absorción de cámara, y en acero una flexibilidad representativa de la unión.
-   No deduzcas esos valores del nombre comercial del XML.
-6. Guarda con otro nombre. Los proyectos nuevos usan esquema 5; los proyectos
-   anteriores se abren conservando su modelo. V6 no lee el nuevo esquema.
+1. Al abrir la aplicación, espera el resultado de la partición Single inicial.
+2. Abre `examples/v71_double_steel.noiz.json`. El resultado aparece automáticamente.
+   También están disponibles `v71_double_timber.noiz.json` y `v71_single.noiz.json`.
+3. Cambia el espesor de una capa, material, cámara o frame. Tras una pausa breve
+   el programa actualiza TL, Rw/STC, gráfico y tabla. No necesitas F5; la tecla
+   queda disponible para refrescar cuando quieras. Escribir un número válido
+   también lo aplica después de la pausa, sin pulsar Enter.
+4. En **Frame 1**, selecciona el frame y relleno. No se exige rellenar la ventana
+   de compliancia ni una resistividad al flujo. **Detalles del frame…** es una
+   consulta de las hipótesis que utilizó el motor. **Qty 0** excluye el relleno.
+5. Si abres un proyecto V7 antiguo, conserva sus fórmulas para reproducibilidad.
+   Pulsa **Usar V7.1** en Frame para convertirlo explícitamente y calcularlo sin
+   aquellos parámetros obligatorios. Guarda una copia con otro nombre.
+6. **Comparación** conserva resultados guardados aunque sigas editando la composición.
+   El gráfico y la tabla se ven juntos; no se permite modificar ejes con zoom o arrastre.
 
-La correspondencia exacta con Strutt sigue pendiente de consulta directa. No se
-ha establecido un margen de error experimental. Consulta las
-[notas de V7](docs/release-v7.md) y [verificaciones](docs/v7-validation.md).
+El cálculo automático usa contactos rígidos genéricos y, si falta resistividad,
+una fibra de referencia publicada de 20.000 Pa·s/m² al espesor elegido. No demuestra
+la flexibilidad del perfil comercial ni la absorción medida de una marca. Estas
+hipótesis aparecen en los informes: [notas V7.1](docs/release-v71.md).
+
+Los nuevos proyectos se guardan con esquema 6. Las versiones anteriores del
+programa no pueden abrirlos; los archivos originales no se sobrescriben al abrir.
 
 ## Reproducir el motor V6 anterior
 
@@ -78,7 +82,7 @@ ha establecido un margen de error experimental. Consulta las
 
 Los archivos anteriores se abren con el modelo infinito que usaban. Para estudiar
 el efecto de V6, cambia explícitamente el modelo en condiciones de cálculo y
-guarda una copia. Los archivos nuevos usan esquema 4; V5 no puede leer ese esquema.
+guarda una copia. V6 escribía esquema 4; V7.1 guarda esquema 6 al guardar una copia.
 La corrección verificada es Davy, no Sewell. No hay todavía una tolerancia
 experimental demostrada para Noiz; consulta [evidencia V6](docs/v6-evidence.md).
 
@@ -231,8 +235,8 @@ Noiz-Transmission/
 └── .github/workflows/   CI para Windows y Linux
 ```
 
-El código V7 se publica en
-[`codex/noiz-transmission-v7`](https://github.com/oscargit010502/Noiz-Transmission/tree/codex/noiz-transmission-v7).
+El código V7.1 se publica en
+[`codex/noiz-transmission-v7-1`](https://github.com/oscargit010502/Noiz-Transmission/tree/codex/noiz-transmission-v7-1).
 Abre ese enlace para ver las carpetas. En la portada del repositorio, cambia
 **main** por esa rama. También puedes descargar **Code → Download ZIP**.
 Las versiones anteriores siguen en las ramas `codex/noiz-transmission-v2` y

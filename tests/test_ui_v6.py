@@ -51,8 +51,8 @@ def fake_prediction(project):
                               10., 12.5, (2500.,), (), ("Test result",))
 
 
-def test_new_projects_select_davy_without_converting_opened_legacy_project(window):
-    assert window.project.calculation_model == "davy"
+def test_new_projects_select_auto_without_converting_opened_legacy_project(window):
+    assert window.project.calculation_model == "auto"
     legacy = default_project()
     window._load_into_editor(legacy)
     assert window.project.calculation_model == "infinite"

@@ -12,6 +12,7 @@ pytest.importorskip("pyqtgraph")
 from PySide6.QtCore import QEvent
 from PySide6.QtWidgets import QApplication, QCheckBox, QDialog, QDoubleSpinBox
 
+from noiz_transmission.application.assembly_services import default_project_v7
 from noiz_transmission.ui.main_window import MainWindow
 
 
@@ -20,6 +21,7 @@ def window(monkeypatch, tmp_path):
     app = QApplication.instance() or QApplication([])
     monkeypatch.setenv("NOIZ_CATALOG_PATH", str(tmp_path / "empty.json"))
     widget = MainWindow()
+    widget._load_into_editor(default_project_v7())
     widget.show()
     app.processEvents()
     yield widget

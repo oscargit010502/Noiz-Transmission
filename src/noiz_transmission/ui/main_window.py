@@ -10,7 +10,7 @@ from threading import Event
 from time import perf_counter
 
 import pyqtgraph as pg
-from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, Signal, Slot
+from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, Signal, Slot
 from PySide6.QtGui import QAction, QCloseEvent, QColor, QFont, QKeySequence
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
@@ -64,7 +64,7 @@ from noiz_transmission.application.assemblies import (
 )
 from noiz_transmission.application.assembly_services import (
     cavity_from_entry,
-    default_project_v7,
+    default_project_v71,
     describe_assembly,
     export_assembly_csv,
     export_assembly_html,
@@ -199,9 +199,11 @@ class _PredictionWorker(QRunnable):
 class MainWindow(QMainWindow):
     """Nested construction editor with independent, recoverable topology drafts."""
 
+    AUTO_CALCULATE_DELAY_MS = 200
+
     def __init__(self) -> None:
         super().__init__()
-        self.project = default_project_v7()
+        self.project = default_project_v71()
         self._saved_project = self.project
         self._current_path: Path | None = None
         self._loading = False
@@ -225,6 +227,10 @@ class MainWindow(QMainWindow):
         self._worker: _PredictionWorker | None = None
         self._pool = QThreadPool.globalInstance()
         self._prediction_cache = PredictionCache()
+        self._calculation_pending = False
+        self._auto_timer = QTimer(self)
+        self._auto_timer.setSingleShot(True)
+        self._auto_timer.timeout.connect(self._run_pending_calculation)
         try:
             self.entries = load_application_catalog()
             catalog_error = ""
@@ -275,7 +281,12 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self.library_label)
         self.library_label.show()
         self._render_project()
-        self.statusBar().showMessage("Listo · Edita la composición y calcula el aislamiento aéreo.")
+        # Typed spin-box values retain keyboardTracking=False: commit after a
+        # short pause instead of calculating every intermediate digit.
+        for control in self.editor_stack.findChildren(QAbstractSpinBox):
+            control.lineEdit().textEdited.connect(self._numeric_text_edited)
+        self._schedule_calculation()
+        self.statusBar().showMessage("Cálculo automático · edita la composición para actualizar el resultado.")
         if catalog_error:
             self._error(f"No se pudo leer la biblioteca: {catalog_error}")
 
@@ -464,7 +475,7 @@ class MainWindow(QMainWindow):
         reset.clicked.connect(self._reset_view)
         layout.addWidget(reset)
         layout.addStretch()
-        layout.addWidget(label("Noiz V7", "muted"))
+        layout.addWidget(label("Noiz V7.1", "muted"))
         return side
 
     def _construction(self) -> QWidget:
@@ -836,7 +847,8 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.absorber_picker, 1)
         sigma = QHBoxLayout()
         sigma.setSpacing(3)
-        sigma.addWidget(label("Resistividad σ [Pa·s/m²]", "muted"))
+        self.resistivity_label = label("Resistividad σ [Pa·s/m²]", "muted")
+        sigma.addWidget(self.resistivity_label)
         self.resistivity_spin = spin(0, 1e8, decimals=2)
         self.resistivity_spin.setMaximumWidth(120)
         self.resistivity_spin.setSpecialValueText("Sin dato")
@@ -847,6 +859,10 @@ class MainWindow(QMainWindow):
         self.bridge_button.setToolTip("Modelo de montantes, fijaciones, compliancia y absorción Davy V7")
         self.bridge_button.clicked.connect(self.show_bridge_settings)
         sigma.addWidget(self.bridge_button)
+        self.automatic_model_button = QPushButton("Usar V7.1")
+        self.automatic_model_button.setToolTip("Actualizar este proyecto al cálculo automático del frame")
+        self.automatic_model_button.clicked.connect(self.use_automatic_frame_model)
+        sigma.addWidget(self.automatic_model_button)
         layout.addLayout(sigma)
         return widget
 
@@ -980,11 +996,16 @@ class MainWindow(QMainWindow):
         self._refresh_summary()
         self._set_title()
         self.message_label.setObjectName("status")
-        self.message_label.setText("Cambios pendientes de cálculo" if changed else "Placas isotrópicas + cámaras · predicción preliminar")
+        self.message_label.setText("Actualización automática pendiente…" if changed else "Placas isotrópicas + cámaras · predicción preliminar")
         self.message_label.setToolTip(self.message_label.text())
         self.message_label.setStyleSheet("")
         if self._input_error:
             self._error(self._input_error)
+        # Product selection/topology refresh may replace an invalid visible
+        # field immediately after this commit. Validate once after that render
+        # rather than losing the automatic request while an old error remains.
+        if changed or self.current_result is None:
+            self._schedule_calculation()
 
     def _set_title(self) -> None:
         dirty = " *" if self._editor_has_changes() else ""
@@ -1035,6 +1056,7 @@ class MainWindow(QMainWindow):
             changes = {key: value}
             if key == "frame_type" and (value == "independent" or value != cavities[self._selected_cavity].frame_type):
                 changes["stud"] = None
+                changes["stud_configuration"] = "independent" if value == "independent" else "shared"
             cavities[self._selected_cavity] = replace(cavities[self._selected_cavity], **changes)
             self._field_errors.pop(f"cavity:{self._selected_cavity}:{key}", None)
             self._commit(replace(self.project, cavities=tuple(cavities)))
@@ -1045,6 +1067,8 @@ class MainWindow(QMainWindow):
             self._invalid(exc, f"cavity:{self._selected_cavity}:{key}")
 
     def _invalid(self, error: Exception, key: str) -> None:
+        self._auto_timer.stop()
+        self._calculation_pending = False
         if self._worker is not None:
             self._worker.cancel_event.set()
         self._field_errors[key] = str(error)
@@ -1082,7 +1106,7 @@ class MainWindow(QMainWindow):
         self.section_view.set_project(self.project, self._selected_panel)
         self.description_label.setText(describe_assembly(self.project))
         self.description_label.setToolTip(describe_assembly(self.project))
-        model = {"davy": "V7 · Davy Single/Double", "finite": "V6 · tamaño finito",
+        model = {"auto": "V7.1 · frame automático", "davy": "V7 · Davy Single/Double", "finite": "V6 · tamaño finito",
                  "infinite": "placas infinitas"}[self.project.calculation_model]
         if porous_mode:
             model = "Miki · medio poroso"
@@ -1324,6 +1348,21 @@ class MainWindow(QMainWindow):
 
     def _refresh_cavity_note(self) -> None:
         cavity = self.project.cavities[self._selected_cavity]
+        automatic = self.project.calculation_model == "auto"
+        self.resistivity_label.setVisible(not automatic)
+        self.resistivity_spin.setVisible(not automatic)
+        self.resistivity_spin.setEnabled(cavity.absorber_count > 0)
+        self.bridge_button.setText("Detalles del frame…" if automatic else "Puente estructural…")
+        self.bridge_button.setToolTip("Consultar las hipótesis resueltas por el modelo automático"
+                                      if automatic else "Parámetros explícitos del modelo histórico V7")
+        self.automatic_model_button.setVisible(not automatic and len(self.project.panels) == 2
+                                               and self.project.excitation == "airborne")
+        if automatic:
+            from noiz_transmission.application.frame_models import resolve_frame
+            frame = resolve_frame(cavity)
+            self.frame_note.setText(frame.label)
+            self.frame_note.setToolTip("\n".join(frame.warnings))
+            return
         independent = cavity.frame_type == "independent" or cavity.stud_configuration == "independent"
         if self.project.calculation_model == "davy":
             self.frame_note.setText("Davy: bastidores sin puentes comunes." if independent else
@@ -1340,8 +1379,57 @@ class MainWindow(QMainWindow):
             self.frame_note.setToolTip(f"{cavity.stud.name}\nDimensiones del XML; no contiene un modelo BIM de la conexión.")
         self.resistivity_spin.setEnabled(cavity.absorber_count > 0)
 
+    def use_automatic_frame_model(self) -> None:
+        """An explicit upgrade preserves historical files until the user chooses V7.1."""
+        if self.project.calculation_model == "auto" or len(self.project.panels) != 2:
+            return
+        try:
+            project = self.current_project()
+        except ValueError as exc:
+            self._error(str(exc))
+            return
+        self._commit(replace(project, calculation_model="auto"))
+        self._show_cavity()
+
+    def show_automatic_frame_details(self) -> None:
+        """Explain resolved frame assumptions without requiring hidden solver inputs."""
+        from noiz_transmission.application.frame_models import resolve_absorption, resolve_frame
+
+        cavity = self.project.cavities[self._selected_cavity]
+        frame = resolve_frame(cavity)
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Frame · modelo automático V7.1")
+        dialog.resize(620, 430)
+        layout = QVBoxLayout(dialog)
+        info = QTextEdit()
+        info.setReadOnly(True)
+        info.setObjectName("automaticFrameDetails")
+        name = cavity.stud.name if cavity.stud else self.frame_combo.currentText()
+        text = (f"{name}\n{frame.label}\n\n"
+                f"Separación de montantes: {cavity.stud_spacing_mm:g} mm\n"
+                f"Cámara: {cavity.depth_mm:g} mm\n\n"
+                "La selección del frame resuelve sus parámetros internos. No necesitas "
+                "introducir compliancia, calibre de correlación ni separación de tornillos.\n\n"
+                + "\n\n".join(frame.warnings))
+        if cavity.absorber_count and cavity.absorber_thickness_mm > 0:
+            absorption = resolve_absorption(cavity)
+            text += (f"\n\nRELLENO\n{absorption.label}\n"
+                     f"Espesor: {absorption.thickness_m * 1000:g} mm\n"
+                     f"Resistividad utilizada: {absorption.flow_resistivity_pa_s_m2:g} Pa·s/m²\n\n"
+                     + "\n\n".join(absorption.warnings))
+        text += "\n\nFuente de la clasificación de contactos: B. H. Sharp (1978), pp. 59–61."
+        info.setPlainText(text)
+        layout.addWidget(info)
+        close = QPushButton("Cerrar")
+        close.clicked.connect(dialog.accept)
+        layout.addWidget(close)
+        dialog.exec()
+
     def show_bridge_settings(self) -> None:
         if not self.project.cavities:
+            return
+        if self.project.calculation_model == "auto":
+            self.show_automatic_frame_details()
             return
         cavity = self.project.cavities[self._selected_cavity]
         dialog = QDialog(self)
@@ -1458,7 +1546,7 @@ class MainWindow(QMainWindow):
                 cavities.append(Cavity())
             target = replace(project, panels=tuple(panels), cavities=tuple(cavities),
                              facing=replace(project.facing, enabled=False) if count > 1 else project.facing)
-            if target.calculation_model == "davy" and count > 2:
+            if target.calculation_model in ("davy", "auto") and count > 2:
                 target = replace(target, calculation_model="finite")
                 model_changed = True
         self._element_topology[project.element_type] = count
@@ -1466,7 +1554,7 @@ class MainWindow(QMainWindow):
         self._render_project()
         if model_changed:
             self.statusBar().showMessage("Triple/Quad usa V6 finito: hojas independientes, sin puentes "
-                                         "por montantes. V7 Davy está disponible para Single/Double.")
+                                         "por montantes. V7/V7.1 está disponible para Single/Double.")
 
     def _change_element(self, kind: str) -> None:
         if self._loading or kind == self.project.element_type:
@@ -1475,7 +1563,7 @@ class MainWindow(QMainWindow):
         self._variants[(self.project.element_type, len(self.project.panels))] = self.project
         self._element_topology[self.project.element_type] = len(self.project.panels)
         count = self._element_topology.get(kind, 1)
-        target = self._variants.get((kind, count)) or default_project_v7(element_type=kind)
+        target = self._variants.get((kind, count)) or default_project_v71(element_type=kind)
         self._selected_panel = self._selected_layer = self._selected_cavity = 0
         self._commit(target)
         self._render_project()
@@ -1601,8 +1689,10 @@ class MainWindow(QMainWindow):
         form = QFormLayout()
         model = QComboBox()
         model.setObjectName("calculationModel")
-        model.addItem("V7 · Davy Single/Double", "davy")
-        model.model().item(0).setEnabled(len(self.project.panels) <= 2 and self.project.element_type != "porous")
+        model.addItem("V7.1 · selección automática del frame", "auto")
+        model.addItem("V7 · Davy con parámetros explícitos", "davy")
+        for index in (0, 1):
+            model.model().item(index).setEnabled(len(self.project.panels) <= 2 and self.project.element_type != "porous")
         model.addItem("V6 · tamaño finito (Davy)", "finite")
         model.addItem("V2–V5 · placas infinitas", "infinite")
         model.setCurrentIndex(model.findData(self.project.calculation_model))
@@ -1634,8 +1724,15 @@ class MainWindow(QMainWindow):
         model_note = label("", "muted", True)
         def update_model_note():
             finite = model.currentData() == "finite"
-            davy_double = model.currentData() == "davy" and len(self.project.panels) == 2
+            davy_double = model.currentData() in ("davy", "auto") and len(self.project.panels) == 2
             settings["limiting_angle_deg"].setEnabled(not davy_double)
+            if model.currentData() == "auto":
+                model_note.setText("Single mantiene la integración de placa finita. Double combina "
+                                   "la vía aérea de Davy con puentes rígidos de Sharp según el frame. "
+                                   "Los parámetros internos se resuelven automáticamente y se registran "
+                                   "en el informe. Es una estimación genérica, sin una calibración "
+                                   "particular de la flexibilidad de cada perfil comercial.")
+                return
             if model.currentData() == "davy":
                 model_note.setText("Davy Single/Double: transmisión aérea y, en Double, por montantes. "
                                    "Requiere campo difuso. Las fijaciones y la compliancia se ajustan "
@@ -1718,15 +1815,52 @@ class MainWindow(QMainWindow):
             except (ValueError, TypeError) as exc:
                 self._error(str(exc))
 
+    def _schedule_calculation(self) -> None:
+        """Coalesce model edits; never accumulate a queue of solver jobs."""
+        if self._closing:
+            return
+        self._calculation_pending = True
+        self._auto_timer.start(self.AUTO_CALCULATE_DELAY_MS)
+
+    @Slot(str)
+    def _numeric_text_edited(self, _text: str) -> None:
+        if self._loading or self._closing:
+            return
+        # The text has not yet been committed to the immutable project. Hide
+        # the old result and cancel it now; validate/interpret after the pause.
+        if self._worker is not None:
+            self._worker.cancel_event.set()
+        self._generation += 1
+        self.current_result = None
+        self._refresh_results()
+        self._schedule_calculation()
+
     @Slot()
     def calculate(self) -> None:
-        if self._busy:
+        """F5 remains an immediate refresh of the latest editable values."""
+        self._auto_timer.stop()
+        self._calculation_pending = True
+        self._run_pending_calculation()
+
+    @Slot()
+    def _run_pending_calculation(self) -> None:
+        if self._closing or not self._calculation_pending:
             return
         try:
             project = self.current_project()
         except ValueError as exc:
+            self._calculation_pending = False
+            self._auto_timer.stop()
             self._error(str(exc))
             return
+        # current_project may commit typed values and schedule another timer.
+        # This snapshot already includes those edits, so consume that request.
+        self._auto_timer.stop()
+        if self._busy:
+            # The cancelled job will emit finished and release the single slot.
+            # Edits arriving meanwhile replace the pending immutable snapshot.
+            return
+        self._calculation_pending = False
         self._busy = True
         self.current_result = None
         self._refresh_results()
@@ -1755,11 +1889,15 @@ class MainWindow(QMainWindow):
         if generation != self._generation:
             self.current_result = None
             self._refresh_results()
-            self.message_label.setText("El elemento cambió durante el cálculo. Calcula de nuevo.")
+            self.message_label.setText("El elemento cambió durante el cálculo. Actualización automática pendiente…")
             if self._input_error:
                 self._error(self._input_error)
+            elif self._calculation_pending and not self._auto_timer.isActive():
+                self._auto_timer.start(0)
             return
         if error is not None:
+            self._calculation_pending = False
+            self._auto_timer.stop()
             self.current_result = None
             self._refresh_results()
             self._error(error)
@@ -1773,6 +1911,10 @@ class MainWindow(QMainWindow):
         elapsed = worker.elapsed_seconds if worker is not None else 0.0
         source = "Resultado recuperado de caché" if worker is not None and worker.cache_hit else "Cálculo completado"
         self.statusBar().showMessage(f"{source} · {elapsed:.3f} s · Puedes guardar el resultado en Comparación.")
+        # A manual refresh requested during the same active job needs no
+        # duplicate prediction: the just-finished result has identical inputs.
+        self._calculation_pending = False
+        self._auto_timer.stop()
 
     def _configure_rating_choices(self) -> None:
         previous = self.rating_combo.currentData()
@@ -2043,11 +2185,12 @@ class MainWindow(QMainWindow):
         self._element_topology[project.element_type] = len(project.panels)
         self._render_project()
         self.message_label.setStyleSheet("")
-        self.message_label.setText("Proyecto cargado · calcula para actualizar el resultado")
+        self.message_label.setText("Proyecto cargado · actualización automática pendiente…")
+        self._schedule_calculation()
 
     def new_project(self) -> None:
         if self._confirm_discard():
-            self._load_into_editor(default_project_v7())
+            self._load_into_editor(default_project_v71())
 
     def open_project(self) -> None:
         filename, _ = QFileDialog.getOpenFileName(self, "Abrir proyecto", "", "Proyecto Noiz (*.json)")
@@ -2124,7 +2267,7 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(dialog)
         info = QTextEdit()
         info.setReadOnly(True)
-        selected_model = {"davy": "V7 · Davy Single/Double", "finite": "V6 · tamaño finito (Davy)",
+        selected_model = {"auto": "V7.1 · frame automático", "davy": "V7 · Davy Single/Double", "finite": "V6 · tamaño finito (Davy)",
                           "infinite": "V2–V5 · placas infinitas"}[self.project.calculation_model]
         edges = ", ".join(f"Panel {i + 1}: {panel.edge_loss_factor:g}"
                           for i, panel in enumerate(self.project.panels))
@@ -2152,7 +2295,29 @@ class MainWindow(QMainWindow):
             "Un catálogo no demuestra validación experimental. Consulta cada ficha en Biblioteca. "
             "Noiz Transmission utiliza modelos documentados propios; no reproduce los algoritmos de INSUL."
         )
-        if self.project.calculation_model == "davy":
+        if self.project.calculation_model == "auto":
+            text = (
+                "MODELO AUTOMÁTICO V7.1\n\nSingle conserva la integración angular y por bandas "
+                "de placa finita de V7. Double combina transmisión aérea Davy/Hansen con "
+                "un camino por puentes rígidos según Sharp (1978). Se suman energías "
+                "transmitidas, no valores TL en dB.\n\n"
+                f"Dimensiones: {self.project.width_m:g} × {self.project.height_m:g} m.\n"
+                f"Pérdidas adicionales de borde η: {edges}.\n\n"
+                "La configuración del frame determina contacto lineal, puntual o ausencia "
+                "de puentes comunes. La unión rígida es genérica: no caracteriza la "
+                "flexibilidad real de un perfil metálico ni el comportamiento dinámico "
+                "de un aislador comercial. No se solicita compliancia al usuario.\n\n"
+                "El relleno conserva su espesor. Si no hay resistividad documentada, se "
+                "utiliza una fibra de referencia publicada y se registra esa hipótesis. "
+                "No se interpreta Damping del XML como resistividad.\n\n"
+                "El recálculo es automático al abrir y editar; una edición posterior "
+                "descarta el cálculo anterior para evitar resultados obsoletos.\n\n"
+                "Este modelo combinado no equivale a una implementación literal de Sharp "
+                "ni a una reproducción de INSUL. La precisión experimental sigue pendiente "
+                "de validación. Triple/Quad conserva el modelo V6 de hojas independientes. "
+                "Rw/STC clasifican la predicción; STC conserva el procedimiento legado 32/8."
+            )
+        elif self.project.calculation_model == "davy":
             text = (
                 "MODELO DE PREDICCIÓN V7\n\nDavy Single/Double según las ecuaciones documentadas "
                 "de Hansen y colaboradores, capítulo 7. Se suman en energía las vías aérea y por "
@@ -2194,6 +2359,8 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:
         if self._confirm_discard():
             self._closing = True
+            self._auto_timer.stop()
+            self._calculation_pending = False
             if self._worker is not None:
                 self._worker.cancel_event.set()
             # A global pool outlives this window. Closing does not wait for the solver;

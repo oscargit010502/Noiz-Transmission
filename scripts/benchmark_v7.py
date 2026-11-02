@@ -15,13 +15,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repeats", type=int, default=5)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--example-prefix", choices=("v7", "v71"), default="v7")
     args = parser.parse_args()
     if args.repeats < 1:
         parser.error("--repeats must be positive")
     root = Path(__file__).resolve().parents[1]
     cases = []
     for name in ("single", "double_timber", "double_steel"):
-        relative = f"examples/v7_{name}.noiz.json"
+        relative = f"examples/{args.example_prefix}_{name}.noiz.json"
         project, _ = load_workspace(root / relative)
         times = []
         for _ in range(args.repeats):
