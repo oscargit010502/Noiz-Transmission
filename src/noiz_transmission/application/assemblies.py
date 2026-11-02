@@ -1,4 +1,4 @@
-"""Immutable, interface-independent construction inputs for the V6 workbench.
+"""Immutable, interface-independent construction inputs for the V7 workbench.
 
 A panel is a stack of co-moving, unbonded isotropic layers. Its bending
 stiffness is the sum of individual stiffnesses, not the stiffness of a bonded
@@ -214,9 +214,20 @@ class Cavity:
     absorber_count: int = 1
     stud: CatalogEntry | None = None
     gas: str = "air"
+    # Davy inputs are explicit: a thickness in mm is not a gauge number, and
+    # a product/connection name is not a measured mechanical compliance.
+    stud_configuration: str = "shared"
+    fastener_spacing_mm: float = 300
+    stud_attachment: str = "auto"
+    steel_gauge: float | None = None
+    steel_section: str = "TC"
+    point_compliance_m_n: float | None = None
+    line_compliance_m2_n: float | None = None
+    cavity_absorption: float | None = None
 
     def __post_init__(self) -> None:
-        for name in ("depth_mm", "stud_width_mm", "stud_depth_mm", "stud_spacing_mm"):
+        for name in ("depth_mm", "stud_width_mm", "stud_depth_mm", "stud_spacing_mm",
+                     "fastener_spacing_mm"):
             finite_number(getattr(self, name), name, positive=True)
         thickness = _nonnegative(self.absorber_thickness_mm, "absorber_thickness_mm")
         _count(self.absorber_count, "absorber_count")
@@ -227,6 +238,21 @@ class Cavity:
         nonempty_string(self.frame_type, "frame_type")
         if self.gas not in ("air", "argon", "krypton", "xenon"):
             raise ValueError("Gas de cámara desconocido.")
+        if self.stud_configuration not in ("shared", "independent"):
+            raise ValueError("stud_configuration debe ser shared o independent.")
+        if self.stud_attachment not in ("auto", "point", "line"):
+            raise ValueError("stud_attachment debe ser auto, point o line.")
+        if self.steel_section not in ("TC", "AWS", "LR", "S", "O"):
+            raise ValueError("steel_section debe ser TC, AWS, LR, S u O.")
+        if self.steel_gauge is not None:
+            finite_number(self.steel_gauge, "steel_gauge", positive=True)
+        for name in ("point_compliance_m_n", "line_compliance_m2_n"):
+            if getattr(self, name) is not None:
+                _nonnegative(getattr(self, name), name)
+        if self.cavity_absorption is not None:
+            absorption = finite_number(self.cavity_absorption, "cavity_absorption", positive=True)
+            if absorption > 1:
+                raise ValueError("cavity_absorption debe estar en (0, 1].")
         object.__setattr__(self, "absorber", _catalog_snapshot(
             self.absorber, "absorber", "absorption",
         ))
@@ -257,7 +283,7 @@ class AssemblyProject:
     floor: FloorSettings = field(default_factory=FloorSettings)
     excitation: str = "airborne"
     # Historical API constructors retain their equations. New desktop projects
-    # opt into the finite approximation through default_project_v6().
+    # opt into a documented model through their versioned factory.
     calculation_model: str = "infinite"
 
     def __post_init__(self) -> None:
@@ -282,8 +308,8 @@ class AssemblyProject:
                 raise ValueError(f"{name} requiere {cls.__name__}.")
         if self.incidence not in ("diffuse", "normal"):
             raise ValueError("incidence debe ser diffuse o normal.")
-        if self.calculation_model not in ("infinite", "finite"):
-            raise ValueError("calculation_model debe ser infinite o finite.")
+        if self.calculation_model not in ("infinite", "finite", "davy"):
+            raise ValueError("calculation_model debe ser infinite, finite o davy.")
         for name in ("width_m", "height_m", "air_density_kg_m3", "sound_speed_m_s"):
             finite_number(getattr(self, name), name, positive=True)
         angle = finite_number(self.limiting_angle_deg, "limiting_angle_deg", positive=True)
@@ -299,14 +325,24 @@ class AssemblyProject:
         ))
 
     @property
+    def panel_mode_basis(self) -> str:
+        """Geometry governing the low-frequency applicability diagnostic."""
+        shared_bay = (self.calculation_model == "davy" and len(self.panels) == 2
+                      and self.cavities[0].stud_configuration == "shared"
+                      and self.cavities[0].frame_type in ("timber", "steel"))
+        return "stud_bay" if shared_bay else "full_panel"
+
+    @property
     def first_panel_modes_hz(self) -> tuple[float, ...]:
-        """Simply supported f11 diagnostics for the finite solid-panel route.
+        """Simply supported full-panel or interstud bending-mode diagnostics.
 
         These are domain checks, not resonances resolved in the transfer model.
         No modes are assigned to the historical infinite model or free porous
-        slab. An entirely disabled panel cannot be classified or calculated.
+        slab. Shared-stud Davy Double uses Hansen 7.89's interstud f_i, consistent
+        with Table 7.10's lower applicability boundary, rather than full-wall f11.
+        An entirely disabled panel cannot be classified or calculated.
         """
-        if self.calculation_model != "finite" or self.element_type == "porous":
+        if self.calculation_model not in ("finite", "davy") or self.element_type == "porous":
             return ()
         size = FinitePanel(self.width_m, self.height_m)
         modes = []
@@ -322,12 +358,24 @@ class AssemblyProject:
                                for layer in active)
             except (OverflowError, ZeroDivisionError) as exc:
                 raise ValueError("Propiedades de placa fuera del intervalo representable.") from exc
-            modes.append(size.first_mode_hz(mass, rigidity))
+            if self.panel_mode_basis == "stud_bay":
+                spacing_m = self.cavities[0].stud_spacing_mm / 1000
+                try:
+                    mode = math.pi / (2 * spacing_m**2) * math.sqrt(rigidity / mass)
+                except (OverflowError, ZeroDivisionError) as exc:
+                    raise ValueError("Frecuencia entre montantes fuera del intervalo representable.") from exc
+                modes.append(finite_number(mode, "interstud_mode_hz", positive=True))
+            else:
+                modes.append(size.first_mode_hz(mass, rigidity))
         return tuple(modes)
 
     @property
     def finite_validity_floor_hz(self) -> float:
-        """Lower limit of the finite angular approximation, 1.5 max(f11)."""
+        """Lower applicability limit: 1.5 max(f_i), using the selected mode basis.
+
+        For unequal shared-stud leaves this conservatively enforces the domain
+        of both plates; Table 7.10 does not itself prescribe the max operator.
+        """
         return 1.5 * max(self.first_panel_modes_hz, default=0.0)
 
     def extrapolated_bands_hz(self, frequencies_hz: Sequence[float]) -> tuple[float, ...]:
@@ -368,8 +416,9 @@ class AssemblyProject:
         if affected:
             name = "Rw" if rating == "rw" else "STC"
             bands = ", ".join(f"{value:g}" for value in affected)
+            mode_label = "fᵢ entre montantes" if self.panel_mode_basis == "stud_bay" else "f₁₁"
             return (f"{name} no emitido: bandas {bands} Hz parcial o totalmente por debajo "
-                    f"de 1.5 f₁₁ = {self.finite_validity_floor_hz:.6g} Hz; "
+                    f"de 1.5 {mode_label} = {self.finite_validity_floor_hz:.6g} Hz; "
                     "la aproximación finita no resuelve los modos de esta región.")
         return ""
 
@@ -386,6 +435,8 @@ class AssemblyPrediction:
     resonance_frequencies_hz: tuple[float, ...]
     warnings: tuple[str, ...]
     model_name: str = "transfer-matrix-plate-1"
+    airborne_transmission: tuple[float, ...] = ()
+    studborne_transmission: tuple[float, ...] = ()
 
     def rating_unavailable_reason(self, rating: str) -> str:
         """Human-readable reason for withholding a principal classification."""

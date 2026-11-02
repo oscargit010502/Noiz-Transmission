@@ -92,7 +92,7 @@ def test_element_specific_multi_panel_tabs(window, kind, limit, prefix, suffix):
     assert labels(window.part_tabs) == expected + suffix
     assert len(window.project.panels) == limit
     assert len(window.project.cavities) == limit - 1
-    assert window.result_tabs.isTabVisible(3) == (kind == "floor")
+    assert window.result_tabs.isTabVisible(window.result_tabs.indexOf(window.floor_covering_page)) == (kind == "floor")
 
 
 def test_browsing_empty_layer_slot_never_adds_phantom_material(window):

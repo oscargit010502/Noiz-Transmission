@@ -1,0 +1,56 @@
+{
+  "source": {
+    "authors": "D. A. Bies, C. H. Hansen, C. Q. Howard and K. L. Hansen",
+    "title": "Engineering Noise Control",
+    "edition": 6,
+    "location": "Chapter 7, Table 7.13, printed page 446",
+    "chapter_doi": "10.1201/9780367814908-7"
+  },
+  "data_kind": "Representative measured airborne transmission-loss values reported in the textbook",
+  "frequency_resolution": "octave",
+  "frequencies_hz": [125, 250, 500, 1000, 2000, 4000],
+  "leaf_material": "gypsum board",
+  "leaf_thickness_mm": [16, 16],
+  "frame": "steel studs",
+  "cases": [
+    {
+      "id": "steel-45-empty",
+      "cavity_depth_mm": 45,
+      "infill": "empty",
+      "reported_total_mass_kg_m2": 26,
+      "transmission_loss_db": [20, 28, 36, 41, 40, 47]
+    },
+    {
+      "id": "steel-45-fibreglass",
+      "cavity_depth_mm": 45,
+      "infill": "fibreglass, cavity filled",
+      "reported_total_mass_kg_m2": 30,
+      "transmission_loss_db": [27, 39, 46, 43, 47, 52]
+    },
+    {
+      "id": "steel-86-empty",
+      "cavity_depth_mm": 86,
+      "infill": "empty",
+      "reported_total_mass_kg_m2": 26,
+      "transmission_loss_db": [19, 30, 39, 44, 40, 43]
+    },
+    {
+      "id": "steel-86-fibreglass",
+      "cavity_depth_mm": 86,
+      "infill": "fibreglass, cavity filled",
+      "reported_total_mass_kg_m2": 30,
+      "transmission_loss_db": [28, 41, 48, 49, 47, 52]
+    }
+  ],
+  "missing_inputs": [
+    "specimen width and height",
+    "individual leaf mass excluding frame and infill",
+    "Young modulus, Poisson ratio and loss factor of each leaf",
+    "stud section, metal thickness or gauge convention and spacing",
+    "fastener spacing and attachment conditions",
+    "infill flow resistivity and detailed mounting conditions",
+    "test report, laboratory and uncertainty"
+  ],
+  "validates_predictor_accuracy": false,
+  "notes": "These data provide a published comparison target, not a fully specified validation specimen. Do not fit unspecified properties and then report the residual as independent predictive accuracy. No 63 Hz or 8000 Hz values are supplied for these four rows; no interpolation or third-octave reconstruction is justified."
+}

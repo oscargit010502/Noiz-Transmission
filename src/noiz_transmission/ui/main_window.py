@@ -64,7 +64,7 @@ from noiz_transmission.application.assemblies import (
 )
 from noiz_transmission.application.assembly_services import (
     cavity_from_entry,
-    default_project_v6,
+    default_project_v7,
     describe_assembly,
     export_assembly_csv,
     export_assembly_html,
@@ -201,7 +201,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self.project = default_project_v6()
+        self.project = default_project_v7()
         self._saved_project = self.project
         self._current_path: Path | None = None
         self._loading = False
@@ -464,7 +464,7 @@ class MainWindow(QMainWindow):
         reset.clicked.connect(self._reset_view)
         layout.addWidget(reset)
         layout.addStretch()
-        layout.addWidget(label("Noiz V6.1", "muted"))
+        layout.addWidget(label("Noiz V7", "muted"))
         return side
 
     def _construction(self) -> QWidget:
@@ -843,6 +843,10 @@ class MainWindow(QMainWindow):
         self.resistivity_spin.valueChanged.connect(lambda value: self._set_cavity_field("flow_resistivity_pa_s_m2", value or None))
         sigma.addWidget(self.resistivity_spin)
         sigma.addWidget(self.frame_note, 1)
+        self.bridge_button = QPushButton("Puente estructural…")
+        self.bridge_button.setToolTip("Modelo de montantes, fijaciones, compliancia y absorción Davy V7")
+        self.bridge_button.clicked.connect(self.show_bridge_settings)
+        sigma.addWidget(self.bridge_button)
         layout.addLayout(sigma)
         return widget
 
@@ -888,10 +892,17 @@ class MainWindow(QMainWindow):
         self.legend = self.spectrum_chart.legend
         self.traces = []
         self.reference_trace = None
-        self.result_tabs.addTab(self.spectrum_chart, "Chart")
-        self.spectrum_table = table(["Frecuencia [Hz]", "R actual [dB]"])
-        self.result_tabs.addTab(self.spectrum_table, "Tables")
+        self.spectrum_table = table(["Hz", "TL [dB]"])
+        self.spectrum_table.setAccessibleName("Resultados TL en tercios de octava")
+        self.spectrum_table.horizontalHeaderItem(0).setToolTip("Frecuencia central [Hz] · bandas de 1/3 de octava")
+        self.spectrum_table.horizontalHeaderItem(1).setToolTip("Pérdida de transmisión del resultado actual [dB]")
+        self.spectrum_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.spectrum_table.horizontalHeader().setStretchLastSection(False)
+        self.spectrum_table.setMinimumWidth(0)
+        self.spectrum_chart.set_results_table(self.spectrum_table)
+        self.result_tabs.addTab(self.spectrum_chart, "Chart + tabla")
         comparisons = QWidget()
+        self.comparison_page = comparisons
         comparison_layout = QVBoxLayout(comparisons)
         comparison_layout.setContentsMargins(0, 3, 0, 0)
         self.comparison_table = table(["Alternativa guardada", "Paneles", "mm", "kg/m²", "Rw [dB]"])
@@ -1071,7 +1082,8 @@ class MainWindow(QMainWindow):
         self.section_view.set_project(self.project, self._selected_panel)
         self.description_label.setText(describe_assembly(self.project))
         self.description_label.setToolTip(describe_assembly(self.project))
-        model = "V6 · tamaño finito" if self.project.calculation_model == "finite" else "placas infinitas"
+        model = {"davy": "V7 · Davy Single/Double", "finite": "V6 · tamaño finito",
+                 "infinite": "placas infinitas"}[self.project.calculation_model]
         if porous_mode:
             model = "Miki · medio poroso"
         self.composition_summary.setText(f"{self.project.width_m:g} × {self.project.height_m:g} m · "
@@ -1177,7 +1189,7 @@ class MainWindow(QMainWindow):
         self._filter_floor_products()
         self.material_picker.set_kind("glazing" if kind == "glazing" else "material")
         self.gas_combo.setVisible(kind == "glazing")
-        self.result_tabs.setTabVisible(3, kind == "floor")
+        self.result_tabs.setTabVisible(self.result_tabs.indexOf(self.floor_covering_page), kind == "floor")
         self.excitation_combo.clear()
         self.excitation_combo.addItem("Aislamiento aéreo · R [dB]", "airborne")
         if kind == "floor":
@@ -1312,7 +1324,14 @@ class MainWindow(QMainWindow):
 
     def _refresh_cavity_note(self) -> None:
         cavity = self.project.cavities[self._selected_cavity]
-        independent = cavity.frame_type == "independent"
+        independent = cavity.frame_type == "independent" or cavity.stud_configuration == "independent"
+        if self.project.calculation_model == "davy":
+            self.frame_note.setText("Davy: bastidores sin puentes comunes." if independent else
+                                    f"Davy: {cavity.frame_type}, unión {cavity.stud_attachment}.")
+            self.frame_note.setToolTip("Revisa fijaciones, gauge o compliancia en Puente estructural… "
+                                      "El nombre del catálogo no caracteriza una unión comercial.")
+            self.resistivity_spin.setEnabled(cavity.absorber_count > 0)
+            return
         self.frame_note.setText("Sin puentes estructurales entre paneles." if independent else
                                 "Montantes: modelo de acoplamiento estructural pendiente.")
         self.frame_note.setToolTip(self.frame_note.text())
@@ -1320,6 +1339,105 @@ class MainWindow(QMainWindow):
             self.frame_note.setText("Connection · geometría de herrajes y cálculo de unión pendientes.")
             self.frame_note.setToolTip(f"{cavity.stud.name}\nDimensiones del XML; no contiene un modelo BIM de la conexión.")
         self.resistivity_spin.setEnabled(cavity.absorber_count > 0)
+
+    def show_bridge_settings(self) -> None:
+        if not self.project.cavities:
+            return
+        cavity = self.project.cavities[self._selected_cavity]
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Davy V7 · puente estructural y cámara")
+        dialog.resize(550, 530)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(label("Estos parámetros definen la idealización de la unión. "
+                               "Los catálogos no aportan una compliancia medida de cada montaje.",
+                               "muted", True))
+        form = QFormLayout()
+        choices = {}
+        for key, title, items in (
+            ("stud_configuration", "Configuración", (("Montante compartido", "shared"),
+             ("Bastidores separados, sin puentes comunes", "independent"))),
+            ("stud_attachment", "Contacto", (("Automático según fijaciones", "auto"),
+             ("Uniones puntuales", "point"), ("Unión lineal", "line"))),
+            ("steel_section", "Coeficientes de sección de acero", tuple((x, x) for x in ("TC", "AWS", "LR", "S", "O"))),
+        ):
+            combo = QComboBox()
+            combo.setObjectName(key)
+            for caption, value in items:
+                combo.addItem(caption, value)
+            combo.setCurrentIndex(combo.findData(getattr(cavity, key)))
+            choices[key] = combo
+            form.addRow(title, combo)
+        fastener = spin(.01, 10000, decimals=3)
+        fastener.setObjectName("fastener_spacing_mm")
+        display_value(fastener, cavity.fastener_spacing_mm)
+        fastener_initial = fastener.value()
+        form.addRow("Separación de fijaciones [mm]", fastener)
+        gauge = spin(0, 100, decimals=3)
+        gauge.setObjectName("steel_gauge")
+        gauge.setSpecialValueText("Sin dato")
+        display_value(gauge, cavity.steel_gauge or 0)
+        gauge_initial = gauge.value()
+        gauge.setToolTip("Parámetro g de la correlación de Hansen/Davy. La convención de gauge "
+                         "de la regresión no está verificada; no introduzca espesor en mm ni "
+                         "suponga equivalencia con un número comercial. Prefiera compliancia medida.")
+        form.addRow("g de correlación (experimental)", gauge)
+        overrides = {}
+        for key, title, scale, maximum, initial in (
+            ("point_compliance_m_n", "C puntual [µm/N]", 1e6, 1e9, 0),
+            ("line_compliance_m2_n", "C lineal [10⁻⁶ m²/N]", 1e6, 1e9, 0),
+            ("cavity_absorption", "Absorción efectiva α de cámara", 1, 1, .1),
+        ):
+            row = QHBoxLayout()
+            enabled = QCheckBox("Dato explícito")
+            enabled.setObjectName(f"{key}_enabled")
+            value = getattr(cavity, key)
+            enabled.setChecked(value is not None)
+            control = spin(.000001 if key == "cavity_absorption" else 0, maximum, decimals=6)
+            control.setObjectName(key)
+            display_value(control, value * scale if value is not None else initial)
+            control.setEnabled(value is not None)
+            enabled.toggled.connect(control.setEnabled)
+            row.addWidget(enabled)
+            row.addWidget(control, 1)
+            form.addRow(title, row)
+            overrides[key] = enabled, control, scale, control.value()
+        layout.addLayout(form)
+        layout.addWidget(label("Si α no se indica, el relleno usa la resistividad al flujo y su espesor "
+                               "mediante Miki. Qty 0 excluye el absorbente. Una compliancia debe "
+                               "corresponder a la unión instalada y su carga. Montantes alternados "
+                               "con soleras comunes no son bastidores independientes.", "muted", True))
+        layout.addWidget(label("TC/AWS/LR/S/O y g pertenecen a correlaciones experimentales. "
+                               "La convención de gauge no está verificada: prefiera C medida "
+                               "para el montaje real; no equivale automáticamente al gauge comercial.",
+                               "muted", True))
+        row = QHBoxLayout()
+        row.addStretch()
+        cancel = QPushButton("Cancelar")
+        cancel.clicked.connect(dialog.reject)
+        row.addWidget(cancel)
+        apply_button = QPushButton("Aplicar")
+        apply_button.clicked.connect(dialog.accept)
+        row.addWidget(apply_button)
+        layout.addLayout(row)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        changes = {key: combo.currentData() for key, combo in choices.items()}
+        if fastener.value() != fastener_initial:
+            changes["fastener_spacing_mm"] = fastener.value()
+        if gauge.value() != gauge_initial:
+            changes["steel_gauge"] = gauge.value() or None
+        for key, (enabled, control, scale, initial) in overrides.items():
+            if not enabled.isChecked():
+                changes[key] = None
+            elif getattr(cavity, key) is None or control.value() != initial:
+                changes[key] = control.value() / scale
+        try:
+            cavities = list(self.project.cavities)
+            cavities[self._selected_cavity] = replace(cavity, **changes)
+            self._commit(replace(self.project, cavities=tuple(cavities)))
+            self._refresh_cavity_note()
+        except (TypeError, ValueError) as exc:
+            self._error(str(exc))
 
     def _change_topology(self, index: int) -> None:
         if self._loading or index < 0:
@@ -1331,6 +1449,7 @@ class MainWindow(QMainWindow):
             return
         self._variants[(project.element_type, len(project.panels))] = project
         target = self._variants.get((project.element_type, count))
+        model_changed = False
         if target is None:
             panels = list(project.panels[:count])
             cavities = list(project.cavities[:count - 1])
@@ -1339,9 +1458,15 @@ class MainWindow(QMainWindow):
                 cavities.append(Cavity())
             target = replace(project, panels=tuple(panels), cavities=tuple(cavities),
                              facing=replace(project.facing, enabled=False) if count > 1 else project.facing)
+            if target.calculation_model == "davy" and count > 2:
+                target = replace(target, calculation_model="finite")
+                model_changed = True
         self._element_topology[project.element_type] = count
         self._commit(target)
         self._render_project()
+        if model_changed:
+            self.statusBar().showMessage("Triple/Quad usa V6 finito: hojas independientes, sin puentes "
+                                         "por montantes. V7 Davy está disponible para Single/Double.")
 
     def _change_element(self, kind: str) -> None:
         if self._loading or kind == self.project.element_type:
@@ -1350,7 +1475,7 @@ class MainWindow(QMainWindow):
         self._variants[(self.project.element_type, len(self.project.panels))] = self.project
         self._element_topology[self.project.element_type] = len(self.project.panels)
         count = self._element_topology.get(kind, 1)
-        target = self._variants.get((kind, count)) or default_project_v6(element_type=kind)
+        target = self._variants.get((kind, count)) or default_project_v7(element_type=kind)
         self._selected_panel = self._selected_layer = self._selected_cavity = 0
         self._commit(target)
         self._render_project()
@@ -1476,6 +1601,8 @@ class MainWindow(QMainWindow):
         form = QFormLayout()
         model = QComboBox()
         model.setObjectName("calculationModel")
+        model.addItem("V7 · Davy Single/Double", "davy")
+        model.model().item(0).setEnabled(len(self.project.panels) <= 2 and self.project.element_type != "porous")
         model.addItem("V6 · tamaño finito (Davy)", "finite")
         model.addItem("V2–V5 · placas infinitas", "infinite")
         model.setCurrentIndex(model.findData(self.project.calculation_model))
@@ -1507,6 +1634,15 @@ class MainWindow(QMainWindow):
         model_note = label("", "muted", True)
         def update_model_note():
             finite = model.currentData() == "finite"
+            davy_double = model.currentData() == "davy" and len(self.project.panels) == 2
+            settings["limiting_angle_deg"].setEnabled(not davy_double)
+            if model.currentData() == "davy":
+                model_note.setText("Davy Single/Double: transmisión aérea y, en Double, por montantes. "
+                                   "Requiere campo difuso. Las fijaciones y la compliancia se ajustan "
+                                   "en Frame → Puente estructural…; no se infieren de la marca del producto. "
+                                   + ("Double usa el límite angular analítico de Hansen 7.102."
+                                      if davy_double else ""))
+                return
             model_note.setText(
                 ("Incidencia normal: el tamaño y las pérdidas de flexión de borde no modifican "
                  "la curva. El modo V6 no representa la rigidez de apoyo ni los modos propios."
@@ -1531,7 +1667,7 @@ class MainWindow(QMainWindow):
             display_value(control, panel.edge_loss_factor)
             control.setToolTip("Factor de pérdidas adimensional adicional al del material. "
                                "Déjelo en cero si η del material ya incluye montaje. "
-                               "Requiere el modelo V6; no es una corrección universal de laboratorio.")
+                               "Disponible en V6/V7; no es una corrección universal de laboratorio.")
             edge_grid.addWidget(label(f"Panel {index + 1}"), 0, index)
             edge_grid.addWidget(control, 1, index)
             edge_controls.append(control)
@@ -1692,7 +1828,8 @@ class MainWindow(QMainWindow):
                 tooltip = reason
             if (self.current_result.project.incidence == "diffuse"
                     and self.current_result.project.rating_extrapolated_bands(key)):
-                detail = "Fuera del dominio V6"
+                detail = ("Fuera del dominio V6" if self.current_result.project.calculation_model == "finite"
+                          else "Fuera del dominio del modelo")
         self.rating_detail.setText(detail)
         self.rating_detail.setToolTip(tooltip)
         self.rating_combo.setToolTip(tooltip)
@@ -1715,12 +1852,17 @@ class MainWindow(QMainWindow):
         self._refresh_rating()
         result = self.current_result
         extrapolated = set(result.project.extrapolated_bands_hz(result.frequencies_hz)) if result else set()
+        mode_label = ("fᵢ entre montantes" if result and result.project.panel_mode_basis == "stud_bay"
+                      else "f₁₁")
+        model_label = "V6" if result and result.project.calculation_model == "finite" else "V7"
         extrapolation_note = (
-            f"Extrapolación V6: parte de la banda está por debajo de 1,5 f₁₁ "
+            f"Extrapolación {model_label}: parte de la banda está por debajo de 1,5 {mode_label} "
             f"({result.project.finite_validity_floor_hz:.1f} Hz). "
-            "El modelo angular no resuelve la rigidez de apoyo ni los modos propios."
+            "La aproximación no resuelve los modos propios de esta región."
             if extrapolated else ""
         )
+        if extrapolated and result.project.panel_mode_basis == "stud_bay":
+            extrapolation_note += " Se aplica el mayor límite de las dos hojas."
         for index in range(7):
             self.octave_table.setItem(0, index, cell("—"))
             self._style_octave_cell(index)
@@ -1752,6 +1894,8 @@ class MainWindow(QMainWindow):
             for row, (frequency, value) in enumerate(zip(result.frequencies_hz, result.tl_db, strict=True)):
                 self.spectrum_table.setItem(row, 0, cell(f"{frequency:g}"))
                 self.spectrum_table.setItem(row, 1, cell(f"{value:.2f}"))
+                for column in (0, 1):
+                    self.spectrum_table.item(row, column).setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 if frequency in extrapolated:
                     for column in (0, 1):
                         item = self.spectrum_table.item(row, column)
@@ -1797,13 +1941,15 @@ class MainWindow(QMainWindow):
                                          f"{prediction.total_thickness_mm:g}", f"{prediction.total_mass_kg_m2:.1f}",
                                          "—" if self._selected_rating(prediction) is None else str(self._selected_rating(prediction)))):
                 self.comparison_table.setItem(row, col, cell(value))
-        self.result_tabs.setTabText(2, f"Comparación · {len(self.predictions)}/6")
+        self.spectrum_chart.arrange()
+        self.result_tabs.setTabText(self.result_tabs.indexOf(self.comparison_page),
+                                    f"Comparación · {len(self.predictions)}/6")
         self.add_comparison_button.setEnabled(result is not None and len(self.predictions) < 6)
         self.remove_button.setEnabled(bool(self.predictions))
         self.result_status.setText(("Actual actualizado · línea continua. Comparaciones guardadas · líneas discontinuas."
                                    if result else "Actual sin calcular · las comparaciones guardadas se conservan al editar"))
         if extrapolated:
-            self.result_status.setText("Bandas en ámbar: extrapolación bajo 1,5 f₁₁. Consulta Modelo e hipótesis.")
+            self.result_status.setText(f"Bandas en ámbar: extrapolación bajo 1,5 {mode_label}. Consulta Modelo e hipótesis.")
             self.result_status.setToolTip(extrapolation_note)
         else:
             self.result_status.setToolTip("")
@@ -1901,7 +2047,7 @@ class MainWindow(QMainWindow):
 
     def new_project(self) -> None:
         if self._confirm_discard():
-            self._load_into_editor(default_project_v6())
+            self._load_into_editor(default_project_v7())
 
     def open_project(self) -> None:
         filename, _ = QFileDialog.getOpenFileName(self, "Abrir proyecto", "", "Proyecto Noiz (*.json)")
@@ -1978,8 +2124,8 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(dialog)
         info = QTextEdit()
         info.setReadOnly(True)
-        finite = self.project.calculation_model == "finite"
-        selected_model = "V6 · tamaño finito (Davy)" if finite else "V2–V5 · placas infinitas"
+        selected_model = {"davy": "V7 · Davy Single/Double", "finite": "V6 · tamaño finito (Davy)",
+                          "infinite": "V2–V5 · placas infinitas"}[self.project.calculation_model]
         edges = ", ".join(f"Panel {i + 1}: {panel.edge_loss_factor:g}"
                           for i, panel in enumerate(self.project.panels))
         text = (
@@ -2006,6 +2152,30 @@ class MainWindow(QMainWindow):
             "Un catálogo no demuestra validación experimental. Consulta cada ficha en Biblioteca. "
             "Noiz Transmission utiliza modelos documentados propios; no reproduce los algoritmos de INSUL."
         )
+        if self.project.calculation_model == "davy":
+            text = (
+                "MODELO DE PREDICCIÓN V7\n\nDavy Single/Double según las ecuaciones documentadas "
+                "de Hansen y colaboradores, capítulo 7. Se suman en energía las vías aérea y por "
+                "montantes; no se suman valores TL en dB.\n\n"
+                f"Dimensiones: {self.project.width_m:g} × {self.project.height_m:g} m.\n"
+                f"Pérdidas adicionales de borde η: {edges}.\n\n"
+                "La unión por montantes usa separación de fijaciones, contacto puntual o lineal "
+                "y compliancia. Para acero se recomienda una compliancia explícita de la unión. "
+                "La convención del parámetro g de la correlación no está verificada; no se convierte "
+                "el espesor del XML ni se supone equivalencia con un gauge comercial. Una conexión "
+                "de marca no se considera caracterizada por su nombre.\n\n"
+                "El relleno requiere resistividad al flujo y espesor, o una absorción efectiva "
+                "de cámara explícita. Qty 0 excluye ese relleno. Bastidores separados significa "
+                "sin puentes comunes, no montantes alternados sobre una misma solera.\n\n"
+                "La corrección de hoja homogénea por espesor/cortante no se infiere para pilas "
+                "de capas. Las bajas frecuencias próximas a los modos propios siguen requiriendo "
+                "validación. No se aplican empalmes arbitrarios entre Sharp y Davy.\n\n"
+                "Triple/Quad conserva el modelo finito V6 de hojas independientes. Impacto, lluvia, "
+                "Gomperts/Mechel y aislamiento entre recintos no forman parte de este modelo. "
+                "Los informes incluyen ecuaciones/modelo, entradas y avisos. No se heredan márgenes "
+                "de error de Strutt o INSUL. Rw/STC son clasificaciones orientativas de una predicción; "
+                "STC utiliza el método legado 32/8."
+            )
         if self.current_result:
             text += "\n\nRESULTADO ACTUAL\n" + self.current_result.model_name
             text += "\n" + "\n".join(self.current_result.warnings)

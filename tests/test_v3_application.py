@@ -160,7 +160,7 @@ def test_current_schema_roundtrip_includes_all_settings(single, tmp_path):
     path = tmp_path / "v3.json"
     save_assembly(project, path)
     assert load_assembly(path) == project
-    assert json.loads(path.read_text())["schema_version"] == 4
+    assert json.loads(path.read_text())["schema_version"] == 5
     payload = json.loads(path.read_text())
     payload["project"]["leak"]["unknown_parameter"] = 4
     path.write_text(json.dumps(payload))
@@ -179,7 +179,9 @@ def test_v2_migration_preserves_original_prediction_inputs(tmp_path):
         for layer in panel["layers"]:
             del layer["enabled"]
     for cavity in data["cavities"]:
-        for name in ("absorber_count", "stud", "gas"):
+        for name in ("absorber_count", "stud", "gas", "stud_configuration",
+                     "fastener_spacing_mm", "stud_attachment", "steel_gauge", "steel_section",
+                     "point_compliance_m_n", "line_compliance_m2_n", "cavity_absorption"):
             del cavity[name]
     payload = {"schema_version": 2, "model_name": "transfer-matrix-plate-1", "project": data}
     path = tmp_path / "old-v2.json"

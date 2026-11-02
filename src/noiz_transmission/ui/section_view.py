@@ -1,7 +1,7 @@
 """Original procedural 2D sections and rotatable 3D construction meshes.
 
 Coordinates are formed from the construction, not from stored product images.
-V5 uses a pinhole camera, a labelled partial view to expose the cavity, and an
+Uses a pinhole camera, a labelled partial view to expose the cavity, and an
 orthogonal transverse section. Metal studs are open U channels: the XML supplies
 web depth, flange width and sheet gauge, but no lip or bend geometry. Unknown
 gauge is drawn as a zero-thickness surface with an explicit notice, never as a
@@ -9,12 +9,16 @@ solid rectangular bar. Profile/RibL,H,W,V are SI metres in inspected catalogues:
 Corrugated uses L/H; Trapezoidal uses L/H/W/V (pitch/height/crest/valley).
 The profile's formed envelope is distinct from the nominal sheet thickness;
 rendering never changes acoustic input data.
+
+V7 adds hidden-surface-tested black edges and schematic tracks and isolator
+symbols. Named spring/elastomer families identify a symbol only: their internal
+proportions and support positions are not manufacturer drawings or BIM data.
 """
 
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 from PySide6.QtCore import QPointF, QRectF, Qt
@@ -33,6 +37,8 @@ PALETTES = {
     "metal": ("#b5c6d0", "#708a9b"),
     "porous": ("#c5ce94", "#85945b"),
     "cover": ("#8fabb1", "#557a83"),
+    "rubber": ("#4a5053", "#262b2e"),
+    "sylomer": ("#81aa9e", "#456e62"),
     "unknown": ("#c1c4c5", "#7a8285"),
 }
 LAYER_COLORS = tuple(colors[0] for colors in PALETTES.values())
@@ -98,6 +104,34 @@ class RenderPart:
     width_m: float | None = None
     metal_thickness_mm: float | None = None
     profile: ProfileGeometry | None = None
+    y_m: float | None = None
+    height_m: float | None = None
+    symbol: str | None = None
+
+
+def isolator_symbol(entry: CatalogEntry | None) -> str | None:
+    """Identify only a visual family, never mechanical properties or BIM geometry."""
+    if entry is None:
+        return None
+    explicit = entry.properties.get("isolator_type")
+    if explicit in ("spring", "neoprene", "rubber", "sylomer"):
+        return explicit
+    name = entry.name.casefold()
+    if any(word in name for word in ("spring hanger", "springs", "resorte", "ressort")):
+        return "spring"
+    for kind, words in (("sylomer", ("sylomer", "sylodyn")),
+                        ("neoprene", ("neoprene", "neopreno", "néoprène")),
+                        ("rubber", ("rubber isolation", "rubber isolat", "caucho"))):
+        if any(word in name for word in words):
+            return kind
+    return None
+
+
+def _is_discrete_support(entry: CatalogEntry | None) -> bool:
+    if isolator_symbol(entry) is None:
+        return False
+    name = entry.name.casefold()
+    return not any(word in name for word in (" stud", "montant", "montante", "joist"))
 
 
 
@@ -238,8 +272,12 @@ class SectionView(QWidget):
                                                  cavity.absorber_thickness_mm, panel_index,
                                                  repeat_index=number))
                         fill_depth += cavity.absorber_thickness_mm
+                separate_frames = (getattr(cavity, "stud_configuration", "shared") == "independent"
+                                   and cavity.frame_type in ("timber", "steel"))
+                frame_depth = cavity.stud_depth_mm * (2 if separate_frames else 1)
+                frame_fits = frame_depth < cavity.depth_mm if separate_frames else frame_depth <= cavity.depth_mm
                 if (cavity.frame_type != "independent" and
-                        cavity.stud_depth_mm <= cavity.depth_mm and
+                        frame_fits and
                         cavity.stud_width_mm / 1000 <= project.width_m):
                     # An incompatible stud is omitted, not silently shortened.
                     # geometry_notes explains the conflict without changing inputs.
@@ -265,11 +303,45 @@ class SectionView(QWidget):
                                  for number in range(n_studs)]
                     if not positions or positions[-1] < project.width_m - stud_width:
                         positions.append(project.width_m - stud_width)
-                    for x in positions:
-                        result.append(RenderPart("stud", stud_name, style,
-                                                 depth + (cavity.depth_mm - stud_depth) / 2,
-                                                 stud_depth, panel_index, x_m=x,
-                                                 width_m=stud_width, metal_thickness_mm=gauge_mm))
+                    frame_start = depth + (cavity.depth_mm - stud_depth) / 2
+                    frame_starts = ((depth, depth + cavity.depth_mm - stud_depth)
+                                    if separate_frames else (frame_start,))
+                    discrete = _is_discrete_support(cavity.stud)
+                    rail_height = min(stud_width, project.height_m / 8)
+                    end_trim = rail_height if style in ("wood", "metal") else 0
+                    if not discrete:
+                        for frame_start in frame_starts:
+                            for x in positions:
+                                result.append(RenderPart("stud", stud_name, style, frame_start,
+                                                         stud_depth, panel_index, x_m=x,
+                                                         width_m=stud_width, metal_thickness_mm=gauge_mm,
+                                                         y_m=end_trim,
+                                                         height_m=project.height_m - 2 * end_trim))
+                            if style in ("wood", "metal"):
+                                for y in (0, project.height_m - rail_height):
+                                    result.append(RenderPart("track", "Solera · esquema", style,
+                                                             frame_start, stud_depth, panel_index,
+                                                             x_m=0, width_m=project.width_m,
+                                                             metal_thickness_mm=gauge_mm,
+                                                             y_m=y, height_m=rail_height))
+                    symbol = isolator_symbol(cavity.stud)
+                    gap = cavity.depth_mm - stud_depth
+                    if symbol and (discrete or gap > 0):
+                        # Catalogue envelopes do not specify a hardware drawing.
+                        # The local symbol is bounded by the available cavity;
+                        # its support locations and internal proportions are schematic.
+                        support_depth = stud_depth if discrete else gap / 2
+                        support_start = frame_start if discrete else frame_start + stud_depth
+                        chosen = sorted(set((0, len(positions) // 2, len(positions) - 1)))
+                        for index in chosen:
+                            for fraction in (.2, .5, .8):
+                                result.append(RenderPart("isolator", cavity.stud.name,
+                                                         "sylomer" if symbol == "sylomer" else
+                                                         "metal" if symbol == "spring" else "rubber",
+                                                         support_start, support_depth, panel_index,
+                                                         x_m=positions[index], width_m=stud_width,
+                                                         y_m=project.height_m * fraction - rail_height / 2,
+                                                         height_m=rail_height, symbol=symbol))
                 depth += cavity.depth_mm
         return tuple(result)
 
@@ -371,8 +443,19 @@ class SectionView(QWidget):
         if any(part.kind == "stud" and part.style in ("unknown", "masonry")
                for part in self.visible_parts()):
             notes.append("Geometría de montante no identificada: sólo envolvente")
+        if any(part.kind == "track" for part in self.visible_parts()):
+            notes.append("Soleras esquemáticas con la sección del montante")
+        if any(part.kind == "isolator" for part in self.visible_parts()):
+            notes.append("Aisladores: símbolos 3D; proporciones y posiciones esquemáticas, no BIM")
         for index, cavity in enumerate(self.project.cavities):
             if cavity.frame_type != "independent":
+                if (getattr(cavity, "stud_configuration", "shared") == "independent"
+                        and cavity.frame_type in ("timber", "steel")):
+                    if 2 * cavity.stud_depth_mm >= cavity.depth_mm:
+                        notes.insert(0, f"Frame {index + 1}: dos bastidores no caben; "
+                                     "montantes omitidos, revisa profundidades y separación libre")
+                    else:
+                        notes.append("Dos bastidores separados; sin soleras comunes")
                 if cavity.stud_depth_mm > cavity.depth_mm:
                     notes.insert(0, f"Frame {index + 1}: montante omitido; profundidad "
                                  f"{cavity.stud_depth_mm:g} mm supera cámara {cavity.depth_mm:g} mm")
@@ -380,7 +463,8 @@ class SectionView(QWidget):
                     notes.insert(0, f"Frame {index + 1}: montante omitido; ancho "
                                  f"{cavity.stud_width_mm:g} mm supera elemento "
                                  f"{self.project.width_m * 1000:g} mm")
-            if cavity.stud is not None and cavity.stud.kind == "connection":
+            if (cavity.stud is not None and cavity.stud.kind == "connection"
+                    and isolator_symbol(cavity.stud) is None):
                 notes.append("Conexión: dimensiones declaradas; herrajes y posición no definidos")
         if any(part.profile is not None for part in self.visible_parts()):
             notes.append("Perfil paramétrico: dimensiones XML; sin detalles de fabricación")
@@ -472,17 +556,36 @@ class SectionView(QWidget):
                            area.top() + span_m / project.width_m * area.height())
 
         for part in parts:
+            if part.kind == "track":
+                # Transverse section through the centre of the element.
+                continue
+            if (part.kind == "isolator" and part.y_m is not None and
+                    not part.y_m <= project.height_m / 2 <= part.y_m + part.height_m):
+                continue
             start, end = self._visual_interval(part, parts)
             span_start = part.x_m or 0
             span_end = span_start + (part.width_m if part.width_m is not None else project.width_m)
             rect = QRectF(at(span_start, start), at(span_end, end)).normalized()
             painter.setOpacity(self.opacity if part.kind != "cavity" else 1)
-            painter.setPen(QPen(QColor(PALETTES[part.style][1]), .7))
+            painter.setPen(QPen(QColor("#111111"), .9))
             painter.setBrush(self._texture(part.style))
             if part.kind == "cavity":
                 painter.setBrush(QColor("#f7f9fa"))
                 painter.setPen(QPen(QColor("#b7c4c9"), .6, Qt.PenStyle.DashLine))
                 painter.drawRect(rect)
+            elif part.kind == "isolator":
+                if part.symbol == "spring":
+                    painter.setBrush(Qt.BrushStyle.NoBrush)
+                    points = [at((span_start + span_end) / 2, start)]
+                    points.extend(at(span_start + (span_end - span_start) * (.15 if i % 2 else .85),
+                                     start + (end - start) * i / 12) for i in range(1, 12))
+                    points.append(at((span_start + span_end) / 2, end))
+                    painter.drawPolyline(QPolygonF(points))
+                else:
+                    painter.setBrush(QColor(PALETTES[part.style][0]))
+                    painter.drawRect(rect)
+                painter.drawLine(at(span_start, start), at(span_end, start))
+                painter.drawLine(at(span_start, end), at(span_end, end))
             elif part.kind == "stud" and part.style in ("unknown", "masonry"):
                 painter.setBrush(Qt.BrushStyle.NoBrush)
                 painter.setPen(QPen(QColor(PALETTES[part.style][1]), .8, Qt.PenStyle.DashLine))
@@ -495,7 +598,7 @@ class SectionView(QWidget):
                           (span_start, span_end, start, start + gauge),
                           (span_start, span_end, end - gauge, end))
                 painter.setBrush(QColor(PALETTES["metal"][0]))
-                painter.setPen(QPen(QColor(PALETTES["metal"][1]), .8))
+                painter.setPen(QPen(QColor("#111111"), .9))
                 for x1, x2, z1, z2 in strips:
                     painter.drawRect(QRectF(at(x1, z1), at(x2, z2)).normalized())
             elif part.profile is not None:
@@ -512,7 +615,7 @@ class SectionView(QWidget):
                     painter.drawPolygon(polygon)
             else:
                 if part.kind == "layer" and part.panel_index == self.selected_panel:
-                    painter.setPen(QPen(QColor("#587182"), 1))
+                    painter.setPen(QPen(QColor("#111111"), 1.1))
                 painter.drawRect(rect)
         painter.setOpacity(1)
         painter.setPen(QColor("#45687b"))
@@ -600,18 +703,44 @@ class SectionView(QWidget):
         camera_distance = self._camera_distance()
         nearer_panel = 0 if self._rotate((0, 0, 1))[2] >= 0 else len(project.panels) - 1
 
-        def add(part, x1, x2, start1, start2, end1, end2):
-            x1 -= project.width_m / 2
-            x2 -= project.width_m / 2
-            z = [(value - total / 2) / 1000 * depth_enlargement
-                 for value in (start1, start2, end1, end2)]
-            y1, y2 = -project.height_m / 2, project.height_m / 2
-            points = ((x1, y1, z[0]), (x2, y1, z[1]), (x2, y2, z[1]), (x1, y2, z[0]),
-                      (x1, y1, z[2]), (x2, y1, z[3]), (x2, y2, z[3]), (x1, y2, z[2]))
+        def add_world(part, points):
             rotated = [self._rotate(point) for point in points]
             result.append((part, tuple((x * camera_distance / (camera_distance + z),
                                         y * camera_distance / (camera_distance + z), z)
                                        for x, y, z in rotated)))
+
+        def add(part, x1, x2, start1, start2, end1, end2, *, ya=None, yb=None):
+            x1 -= project.width_m / 2
+            x2 -= project.width_m / 2
+            z = [(value - total / 2) / 1000 * depth_enlargement
+                 for value in (start1, start2, end1, end2)]
+            y1 = (part.y_m or 0) if ya is None else ya
+            y2 = y1 + (part.height_m or project.height_m) if yb is None else yb
+            y1 -= project.height_m / 2
+            y2 -= project.height_m / 2
+            points = ((x1, y1, z[0]), (x2, y1, z[1]), (x2, y2, z[1]), (x1, y2, z[0]),
+                      (x1, y1, z[2]), (x2, y1, z[3]), (x2, y2, z[3]), (x1, y2, z[2]))
+            add_world(part, points)
+
+        def spring(part, x1, x2, start, end):
+            radius = min(x2 - x1, part.height_m) * .36
+            wire = radius * .16
+            centre_x = (x1 + x2 - project.width_m) / 2
+            centre_y = part.y_m + part.height_m / 2 - project.height_m / 2
+            z1, z2 = [(value - total / 2) / 1000 * depth_enlargement
+                      for value in (start, end)]
+            points = [np.array((centre_x + radius * math.cos(t * math.tau * 3),
+                                centre_y + radius * math.sin(t * math.tau * 3),
+                                z1 + (z2 - z1) * t)) for t in np.linspace(0, 1, 37)]
+            for a, b in zip(points, points[1:]):
+                direction = b - a
+                direction /= np.linalg.norm(direction)
+                normal = np.cross(direction, (0., 0., 1.))
+                normal /= np.linalg.norm(normal)
+                across = np.cross(direction, normal)
+                ring = [(-normal - across) * wire, (normal - across) * wire,
+                        (normal + across) * wire, (-normal + across) * wire]
+                add_world(part, tuple(tuple(point + offset) for point in (a, b) for offset in ring))
 
         for part in parts:
             if part.kind == "cavity":
@@ -628,6 +757,25 @@ class SectionView(QWidget):
                 add(part, x1, x1 + gauge / 1000, start, start, end, end)
                 add(part, x1 + gauge / 1000, x2, start, start, start + gauge, start + gauge)
                 add(part, x1 + gauge / 1000, x2, end - gauge, end - gauge, end, end)
+            elif part.kind == "track" and part.style == "metal":
+                gauge = part.metal_thickness_mm or 0
+                ya, yb = part.y_m, part.y_m + part.height_m
+                web_start = ya if ya == 0 else yb - gauge / 1000
+                add(part, x1, x2, start, start, end, end,
+                    ya=web_start, yb=web_start + gauge / 1000)
+                add(part, x1, x2, start, start, start + gauge, start + gauge)
+                add(part, x1, x2, end - gauge, end - gauge, end, end)
+            elif part.kind == "isolator":
+                pad = (end - start) * .12
+                cap = replace(part, style="metal")
+                add(cap, x1, x2, start, start, start + pad, start + pad)
+                add(cap, x1, x2, end - pad, end - pad, end, end)
+                if part.symbol == "spring":
+                    spring(part, x1, x2, start + pad, end - pad)
+                else:
+                    inset = (x2 - x1) * .12
+                    add(part, x1 + inset, x2 - inset, start + pad, start + pad,
+                        end - pad, end - pad)
             elif part.profile is not None:
                 segments = self._profile_segments(part, x1, x2)
                 if not segments:
@@ -639,13 +787,18 @@ class SectionView(QWidget):
                 # Fill between framing envelopes; the open U remains legible.
                 studs = sorted((item for item in parts if item.kind == "stud" and
                                 item.panel_index == part.panel_index), key=lambda item: item.x_m)
+                tracks = [item for item in parts if item.kind == "track" and
+                          item.panel_index == part.panel_index]
+                trim = tracks[0].height_m if tracks else 0
                 cursor = x1
                 for stud in studs:
                     if stud.x_m > cursor:
-                        add(part, cursor, stud.x_m, start, start, end, end)
+                        add(part, cursor, stud.x_m, start, start, end, end,
+                            ya=trim, yb=project.height_m - trim)
                     cursor = max(cursor, stud.x_m + stud.width_m)
                 if cursor < x2:
-                    add(part, cursor, x2, start, start, end, end)
+                    add(part, cursor, x2, start, start, end, end,
+                        ya=trim, yb=project.height_m - trim)
             else:
                 add(part, x1, x2, start, start, end, end)
         return tuple(result)
@@ -693,7 +846,7 @@ class SectionView(QWidget):
                 if length < 1e-14:
                     continue
                 light_norm = math.sqrt(.35 ** 2 + .5 ** 2 + .79 ** 2)
-                shade = .42 + .58 * max(0, (-.35 * nx - .5 * ny - .79 * nz) / (length * light_norm))
+                shade = .68 + .32 * max(0, (-.35 * nx - .5 * ny - .79 * nz) / (length * light_norm))
                 visual_alpha = (.22 if part.kind == "stud" and part.style in ("unknown", "masonry")
                                 else .55 if part.style == "glass" else 1)
                 alpha = self.opacity * visual_alpha
@@ -715,6 +868,7 @@ class SectionView(QWidget):
         height = max(1, int(viewport.height() * resolution))
         pixels = np.full((height, width, 4), 255, dtype=np.uint8)
         depths = np.full((height, width), np.inf, dtype=np.float32)
+        nearest_surface = np.full((height, width), np.inf, dtype=np.float32)
         for style in {part.style for part, _ in mesh}:
             if style not in self._texture_arrays:
                 texture = self._texture(style).texture().toImage().convertToFormat(QImage.Format.Format_RGBA8888)
@@ -722,9 +876,11 @@ class SectionView(QWidget):
         # Finish all opaque surfaces first. Transparent fragments behind any
         # opaque surface are rejected even when their mean face depth is nearer.
         fragments = []
+        edges = []
         for part, face, shade, alpha in sorted(faces, key=lambda item: item[3] < 1):
             screen = [(width / 2 + (x - cx) * scale, height / 2 + (y - cy) * scale, z)
                       for x, y, z in face]
+            edges.append((screen, alpha))
             for triangle in ((0, 1, 2), (0, 2, 3)):
                 a, b, c = (screen[i] for i in triangle)
                 left = max(0, int(math.floor(min(a[0], b[0], c[0]))))
@@ -747,6 +903,8 @@ class SectionView(QWidget):
                 inverse_depth = w1 / (distance + a[2]) + w2 / (distance + b[2]) + w3 / (distance + c[2])
                 candidate = np.full_like(inverse_depth, np.inf)
                 np.divide(1, inverse_depth, out=candidate, where=inside & (inverse_depth > 0))
+                surface = nearest_surface[top:bottom, left:right]
+                np.minimum(surface, candidate, out=surface)
                 target_depths = depths[top:bottom, left:right]
                 visible = inside & (candidate < target_depths - 1e-8)
                 if not np.any(visible):
@@ -763,8 +921,54 @@ class SectionView(QWidget):
                     fragments.append((gy * width + gx, candidate[visible], colors, alpha))
         if fragments:
             self._composite_fragments(pixels, fragments)
+        self._draw_visible_edges(pixels, nearest_surface, edges, distance, resolution)
         # Own the memory after the NumPy local leaves scope, including cached images.
         return QImage(pixels.data, width, height, width * 4, QImage.Format.Format_RGBA8888).copy()
+
+    @staticmethod
+    def _draw_visible_edges(pixels, nearest, faces, distance, resolution):
+        """Rasterise quad borders against the surface depth, without triangle seams.
+
+        Perspective inverse depth is a plane in screen space. Evaluating that
+        plane at each pixel centre avoids a large depth bias which would expose
+        rear studs through a thin opaque board. Coverage keeps outlines crisp
+        at the active display scale and transparency follows the visible face.
+        """
+        height, width = nearest.shape
+        coverage = np.zeros((height, width), dtype=np.float32)
+        radius = max(.5, .65 * resolution)
+        reach = math.ceil(radius)
+        for screen, alpha in faces:
+            matrix = np.array([(x, y, 1) for x, y, _ in screen[:3]])
+            if abs(np.linalg.det(matrix)) < 1e-9:
+                continue
+            plane = np.linalg.solve(matrix, [1 / (distance + p[2]) for p in screen[:3]])
+            for a, b in zip(screen, (*screen[1:], screen[0])):
+                dx, dy = b[0] - a[0], b[1] - a[1]
+                length_sq = dx * dx + dy * dy
+                if length_sq < 1e-8:
+                    continue
+                steps = min(4 * (width + height), math.ceil(math.sqrt(length_sq) * 2) + 1)
+                t = np.linspace(0, 1, steps)
+                xs, ys = np.floor(a[0] + dx * t).astype(int), np.floor(a[1] + dy * t).astype(int)
+                for ox in range(-reach, reach + 1):
+                    for oy in range(-reach, reach + 1):
+                        px, py = xs + ox, ys + oy
+                        inside = (px >= 0) & (px < width) & (py >= 0) & (py < height)
+                        px, py = px[inside], py[inside]
+                        if not px.size:
+                            continue
+                        inverse = plane[0] * (px + .5) + plane[1] * (py + .5) + plane[2]
+                        depth = np.divide(1, inverse, out=np.full_like(inverse, np.inf), where=inverse > 0)
+                        visible = (inverse > 0) & (depth <= nearest[py, px] + 2e-5)
+                        px, py = px[visible], py[visible]
+                        along = np.clip(((px + .5 - a[0]) * dx + (py + .5 - a[1]) * dy) / length_sq, 0, 1)
+                        separation = np.hypot(px + .5 - a[0] - along * dx,
+                                              py + .5 - a[1] - along * dy)
+                        strength = np.clip(radius + .5 - separation, 0, 1) * alpha
+                        np.maximum.at(coverage, (py, px), strength)
+        amount = coverage[:, :, None]
+        pixels[:, :, :3] = (pixels[:, :, :3] * (1 - amount) + 12 * amount).astype(np.uint8)
 
     @staticmethod
     def _composite_fragments(pixels: np.ndarray, fragments: list) -> None:

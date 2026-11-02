@@ -52,7 +52,12 @@ from noiz_transmission.core.transfer import (
     predict_multilayer,
 )
 
-PROJECT_SCHEMA_VERSION = 4
+PROJECT_SCHEMA_VERSION = 5
+DAVY_MODEL_ID = "davy-single-double-1"
+_V7_CAVITY_FIELDS = {
+    "stud_configuration", "fastener_spacing_mm", "stud_attachment", "steel_gauge",
+    "steel_section", "point_compliance_m_n", "line_compliance_m2_n", "cavity_absorption",
+}
 _MAX_BYTES = 32 * 1024 * 1024
 
 
@@ -120,8 +125,16 @@ def default_project_v6(element_type: str = "wall") -> AssemblyProject:
                    calculation_model="infinite" if element_type == "porous" else "finite")
 
 
+def default_project_v7(element_type: str = "wall") -> AssemblyProject:
+    """New single panels select V7; previous files retain their recorded model."""
+    return replace(default_project_v3(element_type),
+                   calculation_model="infinite" if element_type == "porous" else "davy")
+
+
 def model_name_for_project(project: AssemblyProject) -> str:
     """The actual acoustic model, independently of the project container schema."""
+    if project.calculation_model == "davy" and project.element_type != "porous":
+        return DAVY_MODEL_ID
     return (FINITE_MODEL_ID if project.calculation_model == "finite"
             and project.element_type != "porous" else MODEL_ID)
 
@@ -201,7 +214,10 @@ def _plate(panel: Panel, project: AssemblyProject | None = None) -> Plate:
             damped_stiffness += rigidity * layer.loss_factor
         size = (FinitePanel(project.width_m, project.height_m, panel.edge_loss_factor)
                 if project is not None and project.calculation_model == "finite" else None)
-        return Plate(mass, stiffness, damped_stiffness / stiffness, finite_size=size)
+        loss = damped_stiffness / stiffness
+        if project is not None and project.calculation_model == "davy":
+            loss += panel.edge_loss_factor
+        return Plate(mass, stiffness, loss, finite_size=size)
     except (OverflowError, ZeroDivisionError) as exc:
         raise ValueError("Propiedades de placa fuera del intervalo numérico representable.") from exc
 
@@ -284,6 +300,132 @@ def _leak_fraction(project: AssemblyProject) -> float:
     return fraction
 
 
+def _predict_davy_project(project: AssemblyProject, cancel_event: Event | None) -> AssemblyPrediction:
+    """Adapt explicit construction inputs to the published Single/Double routes."""
+    from noiz_transmission.core.davy import DavyStud, davy_double_bands, davy_single_bands
+
+    if project.element_type == "porous" or len(project.panels) > 2:
+        raise ValueError("V7 Davy admite Single y Double sólidos. Para Triple/Quad seleccione "
+                         "explícitamente V6, disponible solo con hojas independientes.")
+    if project.incidence != "diffuse":
+        raise ValueError("V7 Davy requiere campo difuso; para incidencia normal seleccione V6.")
+    if project.facing.enabled and project.facing.count:
+        raise ValueError("Facing no forma parte de la ruta Davy V7; use V6 para un Facing Miki.")
+    for panel in project.panels:
+        if not any(layer.enabled for layer in panel.layers):
+            raise ValueError(f"{panel.name}: active al menos una capa antes de calcular.")
+        for layer in panel.layers:
+            if layer.enabled:
+                if layer.profile is not None:
+                    raise ValueError("V7 Davy requiere hojas planas: la rigidez de perfiles "
+                                     "no está caracterizada por la geometría del catálogo.")
+                if layer.catalog_entry is not None:
+                    _eligible_entry(layer.catalog_entry)
+    plates = tuple(_plate(panel, project) for panel in project.panels)
+    frequencies = tuple(float(value) for value in NOMINAL_BANDS_HZ)
+    common = dict(width_m=project.width_m, height_m=project.height_m,
+                  frequencies_hz=frequencies, air_density=project.air_density_kg_m3,
+                  sound_speed=project.sound_speed_m_s, cancel_event=cancel_event)
+    warnings = [
+        "V7: predicción exploratoria basada en ecuaciones publicadas de Davy/Hansen; "
+        "no declara equivalencia con Strutt o INSUL ni una tolerancia experimental.",
+        "Se predice el elemento aislado; no incluye flancos, uniones entre recintos ni ISO 12354.",
+        "Pérdidas de borde adicionales explícitas, sumadas a las pérdidas de material; "
+        "use cero si el valor del material ya incluye el montaje.",
+        "Masas y rigideces de capas solidarias se suman sin rigidez compuesta de laminado adherido.",
+        "Masa superficial indicada: hojas sólidas; no incluye montantes ni relleno de cámara.",
+    ]
+    if len(plates) == 1:
+        common["angle_limit_deg"] = project.limiting_angle_deg
+        active = [layer for layer in project.panels[0].layers if layer.enabled]
+        if len(active) == 1 and active[0].count == 1:
+            layer = active[0]
+            common.update(thickness_m=layer.thickness_mm / 1000,
+                          longitudinal_speed_m_s=math.sqrt(layer.young_modulus_pa /
+                              (layer.density_kg_m3 * (1 - layer.poisson_ratio**2))))
+        else:
+            warnings.append("Hoja de varias capas: no se infiere velocidad longitudinal "
+                            "equivalente para una corrección de espesor/cortante.")
+        result = davy_single_bands(plates[0], **common)
+    else:
+        cavity = project.cavities[0]
+        warnings.append("Double Davy usa su límite angular analítico (Hansen 7.102). "
+                        "El ángulo límite guardado del modelo Single/V6 no modifica esta ruta.")
+        if cavity.gas != "air":
+            raise ValueError("Davy V7 se aplica a cámaras de aire; para otros gases use V6.")
+        if cavity.frame_type not in ("independent", "timber", "steel"):
+            raise ValueError("Davy V7 admite montantes de madera o acero, o bastidores separados.")
+        kind = ("independent" if cavity.stud_configuration == "independent"
+                else cavity.frame_type)
+        stud = DavyStud(kind=kind, spacing_m=cavity.stud_spacing_mm / 1000,
+                        fastener_spacing_m=cavity.fastener_spacing_mm / 1000,
+                        attachment=cavity.stud_attachment, steel_gauge=cavity.steel_gauge,
+                        steel_section=cavity.steel_section,
+                        point_compliance_m_n=cavity.point_compliance_m_n,
+                        line_compliance_m2_n=cavity.line_compliance_m2_n)
+        thickness = cavity.absorber_thickness_mm * cavity.absorber_count
+        sigma = cavity.flow_resistivity_pa_s_m2 if cavity.absorber_count else None
+        alpha = cavity.cavity_absorption if cavity.absorber_count else None
+        if cavity.absorber_count and cavity.absorber is not None and thickness == 0:
+            raise ValueError("Indique el espesor del absorbente seleccionado o use Qty 0.")
+        if thickness and sigma is None and alpha is None:
+            raise ValueError("El relleno requiere resistividad al flujo o absorción de cámara "
+                             "explícita en Puente estructural…; Damping XML no es resistividad.")
+        if sigma is not None and thickness == 0:
+            raise ValueError("Una resistividad requiere un espesor absorbente positivo.")
+        if kind == "independent" and cavity.frame_type != "independent":
+            warnings.append("Bastidores separados: se supone ausencia de puentes comunes. "
+                            "No representa montantes alternados sobre soleras compartidas.")
+        if cavity.stud is not None:
+            warnings.append(f"{cavity.stud.name}: se usa una idealización {kind}/{cavity.stud_attachment}, "
+                            "no una caracterización verificada de esta conexión comercial. "
+                            "Los aisladores requieren compliancia medida para su montaje y carga.")
+        if cavity.absorber is not None and cavity.absorber_count:
+            warnings.append(f"Absorbente {cavity.absorber.name}: propiedades acústicas "
+                            "introducidas explícitamente; el catálogo no acredita un ensayo.")
+            warnings.extend(cavity.absorber.warnings)
+        result = davy_double_bands(plates[0], plates[1], depth_m=cavity.depth_mm / 1000,
+                                   stud=stud, absorber_thickness_m=thickness / 1000,
+                                   flow_resistivity_pa_s_m2=sigma, cavity_absorption=alpha,
+                                   **common)
+    warnings.extend(result.warnings)
+    warnings.extend(_source_warnings(project))
+    tl = np.asarray(result.tl_db, dtype=float)
+    airborne = np.asarray(result.airborne_tau, dtype=float)
+    studborne = np.asarray(result.studborne_tau, dtype=float)
+    leak = _leak_fraction(project)
+    if leak:
+        tl = -10 * np.log10((1 - leak) * np.power(10., -tl / 10) + leak)
+        airborne *= 1 - leak
+        studborne *= 1 - leak
+        warnings.append("Fuga ideal: transmisión unitaria en el área abierta, separada de "
+                        "las vías aérea y por montantes. No es Gomperts ni Mechel.")
+    rw = None
+    reason = project.rating_unavailable_reason("rw")
+    if reason:
+        warnings.append(reason)
+    else:
+        selected = [float(value) for frequency, value in zip(frequencies, tl, strict=True)
+                    if frequency in ISO717_FREQUENCIES_HZ]
+        rw = iso717_rw(ISO717_FREQUENCIES_HZ, selected).rw_db
+    stc_reason = project.rating_unavailable_reason("stc")
+    if stc_reason:
+        warnings.append(stc_reason)
+    warnings.append("Rw y STC son clasificaciones orientativas de la predicción; "
+                    "STC usa el procedimiento legado 32/8, no una certificación ASTM.")
+    critical = tuple(project.sound_speed_m_s**2 / (2 * math.pi) *
+                     math.sqrt(plate.mass_kg_m2 / plate.bending_stiffness_nm) for plate in plates)
+    resonance = (float(result.resonance_hz),) if len(plates) == 2 else ()
+    return AssemblyPrediction(
+        project, frequencies, tuple(float(value) for value in tl), rw,
+        sum(plate.mass_kg_m2 for plate in plates),
+        sum(layer.count * layer.thickness_mm for panel in project.panels
+            for layer in panel.layers if layer.enabled) + sum(c.depth_mm for c in project.cavities),
+        critical, resonance, tuple(dict.fromkeys(warnings)), DAVY_MODEL_ID,
+        tuple(float(value) for value in airborne), tuple(float(value) for value in studborne),
+    )
+
+
 def predict_assembly(project: AssemblyProject, *, cancel_event: Event | None = None
                      ) -> AssemblyPrediction:
     """Calculate selected physics; unsupported excitation never yields an airborne substitute."""
@@ -302,6 +444,8 @@ def predict_assembly(project: AssemblyProject, *, cancel_event: Event | None = N
     if project.floor_cover is not None:
         raise ValueError("El revestimiento de suelo requiere un modelo validado de impacto; "
                          "retírelo para calcular únicamente transmisión aérea.")
+    if project.calculation_model == "davy":
+        return _predict_davy_project(project, cancel_event)
     if (project.calculation_model == "infinite"
             and any(panel.edge_loss_factor for panel in project.panels)):
         raise ValueError("El modelo histórico infinito requiere η de borde adicional igual a 0. "
@@ -543,6 +687,9 @@ def describe_assembly(project: AssemblyProject) -> str:
             cavity = project.cavities[index]
             frame = cavity.stud.name if cavity.stud else cavity.frame_type
             description = f"Frame {index + 1}: {frame}, {cavity.depth_mm:g} mm, {cavity.gas}"
+            if project.calculation_model == "davy":
+                description += (f", {cavity.stud_configuration}/{cavity.stud_attachment}, "
+                                f"fijaciones {cavity.fastener_spacing_mm:g} mm")
             if cavity.absorber_count and cavity.absorber_thickness_mm:
                 name = cavity.absorber.name if cavity.absorber else "absorbente manual"
                 description += (f", {cavity.absorber_count} × "
@@ -690,10 +837,11 @@ def _migrate_v2_dict(data: Any) -> AssemblyProject:
                 raise ValueError("Layer V2: campos faltantes o desconocidos.")
             layer["enabled"] = True
     for cavity in _list(data["cavities"], "cavities"):
-        added = {"absorber_count", "stud", "gas"}
+        added = {"absorber_count", "stud", "gas"} | _V7_CAVITY_FIELDS
         if not isinstance(cavity, dict) or set(cavity) != {f.name for f in fields(Cavity)} - added:
             raise ValueError("Cavity V2: campos faltantes o desconocidos.")
         cavity.update(absorber_count=1, stud=None, gas="air")
+        cavity.update(_v7_cavity_defaults())
     for name, cls in (("facing", Facing), ("leak", LeakSettings), ("rainfall", RainfallSettings),
                       ("porous", PorousSettings), ("floor", FloorSettings)):
         data[name] = asdict(cls())
@@ -719,6 +867,32 @@ def _migrate_v3_dict(data: Any) -> AssemblyProject:
         if not isinstance(panel, dict) or set(panel) != {"layers", "name"}:
             raise ValueError("Panel V3: campos faltantes o desconocidos.")
         panel["edge_loss_factor"] = 0.0
+    _migrate_old_cavities(data, "V3")
+    return _project_from_dict(data)
+
+
+def _v7_cavity_defaults() -> dict[str, Any]:
+    defaults = Cavity()
+    return {name: getattr(defaults, name) for name in _V7_CAVITY_FIELDS}
+
+
+def _migrate_old_cavities(data: dict, version_name: str) -> None:
+    old_fields = {field.name for field in fields(Cavity)} - _V7_CAVITY_FIELDS
+    for cavity in _list(data["cavities"], "cavities"):
+        if not isinstance(cavity, dict) or set(cavity) != old_fields:
+            raise ValueError(f"Cavity {version_name}: campos faltantes o desconocidos.")
+        cavity.update(_v7_cavity_defaults())
+
+
+def _migrate_v4_dict(data: Any) -> AssemblyProject:
+    import copy
+
+    data = copy.deepcopy(data)
+    if not isinstance(data, dict) or set(data) != {field.name for field in fields(AssemblyProject)}:
+        raise ValueError("AssemblyProject V4: campos faltantes o desconocidos.")
+    if data["calculation_model"] not in ("infinite", "finite"):
+        raise ValueError("AssemblyProject V4: calculation_model desconocido.")
+    _migrate_old_cavities(data, "V4")
     return _project_from_dict(data)
 
 
@@ -784,7 +958,7 @@ def load_assembly(path: str | Path) -> AssemblyProject:
 
 
 def load_workspace(path: str | Path) -> tuple[AssemblyProject, tuple[AssemblyProject, ...]]:
-    """Load schema 4 variants, explicitly migrating historical schemas 1–3."""
+    """Load schema 5 variants, explicitly migrating historical schemas 1–4."""
     with Path(path).open("rb") as stream:
         raw = stream.read(_MAX_BYTES + 1)
     if len(raw) > _MAX_BYTES:
@@ -812,10 +986,21 @@ def load_workspace(path: str | Path) -> tuple[AssemblyProject, tuple[AssemblyPro
         migrated = [project_to_dict(_migrate_v3_dict(item))
                     for item in _list(payload.get("variants", []), "variants")]
         return active, _variants_from_dicts(migrated, active)
+    if payload["schema_version"] == 4:
+        if (set(payload) not in ({"schema_version", "model_name", "project"},
+                                {"schema_version", "model_name", "project", "variants"})
+                or payload["model_name"] not in (MODEL_ID, FINITE_MODEL_ID)):
+            raise ValueError("Versión de modelo V4 o campos desconocidos.")
+        active = _migrate_v4_dict(payload["project"])
+        if payload["model_name"] != model_name_for_project(active):
+            raise ValueError("El identificador del modelo no coincide con las condiciones del proyecto.")
+        migrated = [project_to_dict(_migrate_v4_dict(item))
+                    for item in _list(payload.get("variants", []), "variants")]
+        return active, _variants_from_dicts(migrated, active)
     if (set(payload) not in ({"schema_version", "model_name", "project"},
                             {"schema_version", "model_name", "project", "variants"})
             or payload["schema_version"] != PROJECT_SCHEMA_VERSION
-            or payload["model_name"] not in (MODEL_ID, FINITE_MODEL_ID)):
+            or payload["model_name"] not in (MODEL_ID, FINITE_MODEL_ID, DAVY_MODEL_ID)):
         raise ValueError("Versión de esquema o modelo no compatible, o campos desconocidos.")
     active = _project_from_dict(payload["project"])
     if payload["model_name"] != model_name_for_project(active):
@@ -877,6 +1062,13 @@ def _predictions(predictions: Sequence[AssemblyPrediction]) -> tuple[AssemblyPre
             raise ValueError("Las advertencias deben ser una tupla de textos.")
         if item.model_name != model_name_for_project(item.project):
             raise ValueError("Versión de modelo desconocida o incompatible con el proyecto.")
+        for name in ("airborne_transmission", "studborne_transmission"):
+            component = getattr(item, name)
+            if component:
+                if len(component) != len(item.frequencies_hz):
+                    raise ValueError(f"{name}: longitud incompatible con el espectro.")
+                if any(not 0 <= finite_number(value, name) <= 1 for value in component):
+                    raise ValueError(f"{name}: coeficientes de transmisión fuera de [0, 1].")
         if item.rw_db is not None and item.rating_unavailable_reason("rw"):
             raise ValueError("El resultado contiene Rw fuera del dominio de clasificación: "
                              + item.rating_unavailable_reason("rw"))
@@ -893,6 +1085,7 @@ def _metadata(item: AssemblyPrediction, index: int) -> dict[str, Any]:
             [panel.edge_loss_factor for panel in item.project.panels], allow_nan=False,
         ),
         "first_panel_modes_hz": json.dumps(item.project.first_panel_modes_hz, allow_nan=False),
+        "panel_mode_basis": item.project.panel_mode_basis,
         "finite_validity_floor_hz": item.project.finite_validity_floor_hz,
         "rw_unavailable_reason": item.rating_unavailable_reason("rw"),
         "stc_unavailable_reason": item.rating_unavailable_reason("stc"),
@@ -902,6 +1095,8 @@ def _metadata(item: AssemblyPrediction, index: int) -> dict[str, Any]:
         "stc_procedure": STC_PROCEDURE if item.stc_db is not None else None,
         "critical_frequencies_hz": json.dumps(item.critical_frequencies_hz, allow_nan=False),
         "resonance_frequencies_hz": json.dumps(item.resonance_frequencies_hz, allow_nan=False),
+        "airborne_transmission": json.dumps(item.airborne_transmission, allow_nan=False),
+        "studborne_transmission": json.dumps(item.studborne_transmission, allow_nan=False),
         "project_json": json.dumps(project_to_dict(item.project), ensure_ascii=False, allow_nan=False),
         "software_versions": json.dumps(_versions(), sort_keys=True),
         "warnings": " | ".join(item.warnings),
@@ -957,11 +1152,12 @@ def export_assembly_html(predictions: Sequence[AssemblyPrediction], path: str | 
                 f"Masa de hojas: {item.total_mass_kg_m2:g} kg/m²")
         parts.append(f"<p>Rw: {rw} · STC: {stc} · {mass} · "
                      f"Espesor total: {item.total_thickness_mm:g} mm</p>")
-        model_label = ("V6 · corte angular finito de Davy" if item.model_name == FINITE_MODEL_ID
-                       else "Histórico · placas infinitas")
+        model_label = {DAVY_MODEL_ID: "V7 · Davy Single/Double con vías aérea y estructural",
+                       FINITE_MODEL_ID: "V6 · corte angular finito de Davy"}.get(
+                           item.model_name, "Histórico · placas infinitas")
         parts.append(f"<p>Modelo: {escape(model_label)} ({escape(item.model_name)}). "
                      f"Dimensiones: {item.project.width_m:g} × {item.project.height_m:g} m.</p>")
-        if item.model_name == FINITE_MODEL_ID:
+        if item.model_name in (FINITE_MODEL_ID, DAVY_MODEL_ID):
             losses = "; ".join(f"Panel {index}: {panel.edge_loss_factor:g}"
                                for index, panel in enumerate(item.project.panels, 1))
             parts.append(f"<p>η de borde adicional: {losses}. "
@@ -988,7 +1184,7 @@ def export_assembly_html(predictions: Sequence[AssemblyPrediction], path: str | 
         parts.append("<h3>Alcance y limitaciones</h3><ul>")
         parts.extend(f"<li>{escape(warning)}</li>" for warning in item.warnings)
         parts.append("</ul><h3>Espectro de transmisión aérea</h3><table><thead><tr>"
-                     "<th>Frecuencia nominal (Hz)</th><th>TL integrado en banda (dB)</th>"
+                     "<th>Frecuencia nominal (Hz)</th><th>TL de banda (dB)</th>"
                      "</tr></thead><tbody>")
         for frequency, loss in zip(item.frequencies_hz, item.tl_db, strict=True):
             parts.append(f"<tr><td>{frequency:.17g}</td><td>{loss:.17g}</td></tr>")

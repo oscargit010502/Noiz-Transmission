@@ -32,6 +32,9 @@ jobs:
       - run: uv run noiz assembly examples/v3_glazing.noiz.json --output-dir artifacts/glazing
       - run: uv run noiz assembly examples/v3_porous.noiz.json --output-dir artifacts/porous
       - run: uv run noiz assembly examples/v6_single.noiz.json --output-dir artifacts/v6
+      - run: uv run noiz assembly examples/v7_single.noiz.json --output-dir artifacts/v7-single
+      - run: uv run noiz assembly examples/v7_double_timber.noiz.json --output-dir artifacts/v7-timber
+      - run: uv run noiz assembly examples/v7_double_steel.noiz.json --output-dir artifacts/v7-steel
       - run: uv run python -m build --installer uv
       - uses: actions/upload-artifact@v4
         with:
@@ -44,3 +47,6 @@ jobs:
             artifacts/glazing/*
             artifacts/porous/*
             artifacts/v6/*
+            artifacts/v7-single/*
+            artifacts/v7-timber/*
+            artifacts/v7-steel/*

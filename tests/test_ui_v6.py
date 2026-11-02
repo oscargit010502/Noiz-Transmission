@@ -51,8 +51,8 @@ def fake_prediction(project):
                               10., 12.5, (2500.,), (), ("Test result",))
 
 
-def test_new_projects_select_finite_without_converting_opened_legacy_project(window):
-    assert window.project.calculation_model == "finite"
+def test_new_projects_select_davy_without_converting_opened_legacy_project(window):
+    assert window.project.calculation_model == "davy"
     legacy = default_project()
     window._load_into_editor(legacy)
     assert window.project.calculation_model == "infinite"
@@ -203,7 +203,7 @@ def test_desktop_reports_cached_run_and_recalculates_after_input_change(window, 
 
 
 def test_extrapolated_bands_are_marked_and_have_no_principal_rating_or_reference(window):
-    project = replace(window.project, width_m=.35, height_m=.4)
+    project = replace(default_project_v6(), width_m=.35, height_m=.4)
     result = replace(fake_prediction(project), frequencies_hz=tuple(NOMINAL_BANDS_HZ),
                      tl_db=tuple(20. + i for i in range(21)))
     # Even a manually supplied scalar may not bypass the validity domain.

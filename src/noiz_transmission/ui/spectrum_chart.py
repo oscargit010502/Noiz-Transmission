@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 
 import pyqtgraph as pg
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QRect, Qt
 from PySide6.QtGui import QFont, QPainter, QPen
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -150,8 +150,20 @@ class SpectrumLegend(QScrollArea):
         # allow every line explicitly before QScrollArea calculates its range.
         text_width = max(30, self.width() - 76)
         for _, title in self.items:
-            title.setMinimumHeight(max(title.fontMetrics().height(), title.heightForWidth(text_width)))
+            # heightForWidth() includes the previous minimum height and cannot
+            # shrink after a narrow initial layout; measure the text itself.
+            bounds = title.fontMetrics().boundingRect(
+                QRect(0, 0, text_width, 10000), Qt.TextFlag.TextWordWrap, title.text())
+            title.setMinimumHeight(max(title.fontMetrics().height(), bounds.height()))
         self.rows.activate()
+
+    def required_height(self) -> int:
+        """Measure the rows without waiting for Qt's deferred layout update."""
+        margins = self.rows.contentsMargins()
+        checkbox_height = max((box.sizeHint().height() for box in self.checkboxes.values()), default=0)
+        rows = sum(max(16, checkbox_height, title.minimumHeight()) for _, title in self.items)
+        gaps = self.rows.spacing() * max(0, len(self.items) - 1)
+        return margins.top() + rows + gaps + margins.bottom()
 
 
 class ReadOnlyViewBox(pg.ViewBox):
@@ -182,7 +194,7 @@ class ReadOnlyViewBox(pg.ViewBox):
 
 
 class SquareSpectrumChart(QWidget):
-    """Lay out a square ViewBox and a legend outside the axes, on their right."""
+    """Square axes with the legend and optional numeric results on their right."""
 
     LEFT = 52
     BOTTOM = 38
@@ -225,6 +237,14 @@ class SquareSpectrumChart(QWidget):
         self.plot.getAxis("top").setHeight(self.EDGE)
         self.plot.getAxis("right").setWidth(self.EDGE)
         self.legend = SpectrumLegend(self)
+        self.results_table: QWidget | None = None
+
+    def set_results_table(self, widget: QWidget) -> None:
+        """Use the existing side column so results do not narrow the plot twice."""
+        self.results_table = widget
+        widget.setParent(self)
+        widget.show()
+        self.arrange()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -249,4 +269,19 @@ class SquareSpectrumChart(QWidget):
         left = max(0, (self.width() - plot_width - self.GAP - legend_width) // 2)
         top = max(0, (self.height() - plot_height) // 2)
         self.plot_widget.setGeometry(left, top, plot_width, plot_height)
-        self.legend.setGeometry(left + plot_width + self.GAP, top, legend_width, plot_height)
+        right = left + plot_width + self.GAP
+        if self.results_table is None:
+            self.legend.setGeometry(right, top, legend_width, plot_height)
+        else:
+            # Wrapping changes when the window width changes; establish the
+            # new width before measuring the required legend height.
+            self.legend.resize(legend_width, plot_height)
+            self.legend._fit_rows()
+            # Two usual entries stay above the table. Long comparison legends
+            # scroll independently instead of taking away all numeric rows.
+            legend_height = min(max(24, self.legend.required_height()),
+                                max(24, plot_height // 3))
+            self.legend.setGeometry(right, top, legend_width, legend_height)
+            table_top = top + legend_height + 4
+            self.results_table.setGeometry(right, table_top, legend_width,
+                                           max(20, plot_height - legend_height - 4))

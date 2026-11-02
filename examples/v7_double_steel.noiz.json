@@ -1,0 +1,238 @@
+{
+  "schema_version": 5,
+  "model_name": "davy-single-double-1",
+  "project": {
+    "name": "V7 Double acero — compliancia sintética explícita",
+    "panels": [
+      {
+        "layers": [
+          {
+            "name": "Panel ligero — ejemplo sintético",
+            "thickness_mm": 12.5,
+            "density_kg_m3": 800.0,
+            "young_modulus_pa": 2500000000.0,
+            "loss_factor": 0.03,
+            "poisson_ratio": 0.25,
+            "count": 1,
+            "catalog_entry": {
+              "id": "noiz:synthetic-light-panel",
+              "kind": "material",
+              "name": "Panel ligero — ejemplo sintético",
+              "category": "Referencia sintética",
+              "manufacturer": "Sin fabricante",
+              "countries": [
+                "Internacional / sin fabricante"
+              ],
+              "properties": {
+                "density_kg_m3": 800.0,
+                "thickness_m": 0.0125,
+                "young_modulus_pa": 2500000000.0,
+                "poisson_ratio": 0.25,
+                "loss_factor": 0.03,
+                "material_type": "Isotropic",
+                "solid_model_eligible": true,
+                "measurement_verified": false,
+                "data_status": "synthetic",
+                "loss_factor_source": "Hipótesis del usuario; V1 no contiene amortiguamiento"
+              },
+              "raw_fields": {
+                "id": "\"synthetic-light-panel\"",
+                "name": "\"Panel ligero — ejemplo sintético\"",
+                "density_kg_m3": "800.0",
+                "young_modulus_pa": "2500000000.0",
+                "poisson_ratio": "0.25",
+                "region": "\"Internacional / sin fabricante\"",
+                "source": "\"Valores definidos por el proyecto para verificación numérica; no son una ficha comercial.\"",
+                "data_status": "\"synthetic\"",
+                "source_url": "null",
+                "source_date": "\"2026-10-13\"",
+                "license": "\"MIT\"",
+                "version": "\"1\"",
+                "uncertainty": "\"No evaluada; no utilizar como caracterización de un producto comercial.\""
+              },
+              "source_file": "noiz-v1-material-snapshot",
+              "source_sha256": "ed0ba372c3d516f76d268b241207b7b01a74c4a97aaad93fe71fd0f2b03f2f98",
+              "original_id": "synthetic-light-panel",
+              "warnings": [
+                "Procedencia: Valores definidos por el proyecto para verificación numérica; no son una ficha comercial.",
+                "Incertidumbre: No evaluada; no utilizar como caracterización de un producto comercial."
+              ]
+            },
+            "profile": null,
+            "enabled": true
+          }
+        ],
+        "name": "Panel 1",
+        "edge_loss_factor": 0.0
+      },
+      {
+        "layers": [
+          {
+            "name": "Panel ligero — ejemplo sintético",
+            "thickness_mm": 12.5,
+            "density_kg_m3": 800.0,
+            "young_modulus_pa": 2500000000.0,
+            "loss_factor": 0.03,
+            "poisson_ratio": 0.25,
+            "count": 1,
+            "catalog_entry": {
+              "id": "noiz:synthetic-light-panel",
+              "kind": "material",
+              "name": "Panel ligero — ejemplo sintético",
+              "category": "Referencia sintética",
+              "manufacturer": "Sin fabricante",
+              "countries": [
+                "Internacional / sin fabricante"
+              ],
+              "properties": {
+                "density_kg_m3": 800.0,
+                "thickness_m": 0.0125,
+                "young_modulus_pa": 2500000000.0,
+                "poisson_ratio": 0.25,
+                "loss_factor": 0.03,
+                "material_type": "Isotropic",
+                "solid_model_eligible": true,
+                "measurement_verified": false,
+                "data_status": "synthetic",
+                "loss_factor_source": "Hipótesis del usuario; V1 no contiene amortiguamiento"
+              },
+              "raw_fields": {
+                "id": "\"synthetic-light-panel\"",
+                "name": "\"Panel ligero — ejemplo sintético\"",
+                "density_kg_m3": "800.0",
+                "young_modulus_pa": "2500000000.0",
+                "poisson_ratio": "0.25",
+                "region": "\"Internacional / sin fabricante\"",
+                "source": "\"Valores definidos por el proyecto para verificación numérica; no son una ficha comercial.\"",
+                "data_status": "\"synthetic\"",
+                "source_url": "null",
+                "source_date": "\"2026-10-13\"",
+                "license": "\"MIT\"",
+                "version": "\"1\"",
+                "uncertainty": "\"No evaluada; no utilizar como caracterización de un producto comercial.\""
+              },
+              "source_file": "noiz-v1-material-snapshot",
+              "source_sha256": "ed0ba372c3d516f76d268b241207b7b01a74c4a97aaad93fe71fd0f2b03f2f98",
+              "original_id": "synthetic-light-panel",
+              "warnings": [
+                "Procedencia: Valores definidos por el proyecto para verificación numérica; no son una ficha comercial.",
+                "Incertidumbre: No evaluada; no utilizar como caracterización de un producto comercial."
+              ]
+            },
+            "profile": null,
+            "enabled": true
+          }
+        ],
+        "name": "Panel 2",
+        "edge_loss_factor": 0.0
+      }
+    ],
+    "cavities": [
+      {
+        "depth_mm": 100,
+        "absorber": {
+          "id": "noiz-example:synthetic-porous-fill",
+          "kind": "absorption",
+          "name": "Absorbente de 50 mm — ejemplo sintético",
+          "category": "Referencia sintética",
+          "manufacturer": "Sin fabricante",
+          "countries": [
+            "Internacional"
+          ],
+          "properties": {
+            "thickness_m": 0.05,
+            "density_kg_m3": 20.0,
+            "solid_model_eligible": false,
+            "measurement_verified": false,
+            "units_schema_verified": true,
+            "data_status": "synthetic",
+            "license": "MIT"
+          },
+          "raw_fields": {
+            "Source": "Valores definidos por Noiz Transmission para probar la interfaz y el motor; no son materiales comerciales ni resultados de ensayo.",
+            "License": "MIT",
+            "id": "synthetic-porous-fill",
+            "name": "Absorbente de 50 mm — ejemplo sintético",
+            "thickness_m": "0.05",
+            "density_kg_m3": "20.0",
+            "note": "La resistividad al flujo debe indicarse explícitamente en cada proyecto; no se deduce de la densidad ni de un campo Damping."
+          },
+          "source_file": "example_catalog.json",
+          "source_sha256": "5afcab1dd0aa0624adb3f34b27fc43beba671ca301ab5c56d70bbd84556146e7",
+          "original_id": "synthetic-porous-fill",
+          "warnings": [
+            "Valores definidos por Noiz Transmission para probar la interfaz y el motor; no son materiales comerciales ni resultados de ensayo.",
+            "La resistividad al flujo debe indicarse explícitamente en cada proyecto; no se deduce de la densidad ni de un campo Damping."
+          ]
+        },
+        "absorber_thickness_mm": 40,
+        "flow_resistivity_pa_s_m2": 10000,
+        "frame_type": "steel",
+        "stud_width_mm": 40,
+        "stud_depth_mm": 90,
+        "stud_spacing_mm": 600,
+        "absorber_count": 1,
+        "stud": null,
+        "gas": "air",
+        "stud_configuration": "shared",
+        "fastener_spacing_mm": 300,
+        "stud_attachment": "point",
+        "steel_gauge": null,
+        "steel_section": "TC",
+        "point_compliance_m_n": 1e-05,
+        "line_compliance_m2_n": null,
+        "cavity_absorption": null
+      }
+    ],
+    "element_type": "wall",
+    "width_m": 2.4,
+    "height_m": 2.7,
+    "incidence": "diffuse",
+    "air_density_kg_m3": 1.21,
+    "sound_speed_m_s": 343,
+    "limiting_angle_deg": 78,
+    "leak_percentage": 0,
+    "floor_cover": null,
+    "notes": "Mismo sistema sintético con acero y compliancia puntual SUPUESTA 1e-5 m/N, no medida. Se usa para demostrar la separación de vías aérea y estructural. No equivale a ningún montaje comercial ni sirve como tolerancia de precisión.",
+    "facing": {
+      "enabled": false,
+      "material": null,
+      "thickness_mm": 0,
+      "flow_resistivity_pa_s_m2": null,
+      "count": 1
+    },
+    "leak": {
+      "enabled": false,
+      "kind": "slit",
+      "method": "gomperts",
+      "position": "middle",
+      "height_mm": 1,
+      "length_mm": 1000,
+      "depth_mm": 100,
+      "radius_mm": 1,
+      "mechel_sealed": false,
+      "mass_side1_kg_m2": 0,
+      "mass_side2_kg_m2": 0,
+      "mechel_absorption": false,
+      "cavity_empty": true,
+      "cavity_absorption": null
+    },
+    "rainfall": {
+      "rain_type": "laboratory",
+      "laboratory_class": "heavy",
+      "natural_mm_h": 40,
+      "rainfall_area_m2": 1
+    },
+    "porous": {
+      "material": null,
+      "thickness_mm": 50,
+      "flow_resistivity_pa_s_m2": null
+    },
+    "floor": {
+      "mode": "measured",
+      "base_floor": "lightweight"
+    },
+    "excitation": "airborne",
+    "calculation_model": "davy"
+  }
+}

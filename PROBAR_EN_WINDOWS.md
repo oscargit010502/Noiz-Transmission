@@ -1,11 +1,11 @@
-# Probar Noiz Transmission V6.1 en Windows
+# Probar Noiz Transmission V7 en Windows
 
 La ventana se abre en tu ordenador. Esta entrega contiene código y un lanzador
 `.cmd`; todavía no contiene un instalador `.exe`.
 
 ## Descargar y abrir
 
-1. Descarga el [ZIP V6.1 desde GitHub](https://github.com/oscargit010502/Noiz-Transmission/archive/refs/heads/codex/noiz-transmission-v6-1.zip)
+1. Descarga el [ZIP V7 desde GitHub](https://github.com/oscargit010502/Noiz-Transmission/archive/refs/heads/codex/noiz-transmission-v7.zip)
    y selecciona **Extraer todo**. La carpeta del proyecto debe contener `INICIAR_NOIZ.cmd`, `pyproject.toml`,
    `uv.lock`, `examples` y `src`. Usa una carpeta nueva para conservar tus versiones anteriores.
 2. Instala **uv** siguiendo sus
@@ -32,12 +32,34 @@ uv run --locked --extra desktop noiz-transmission
 La aplicación configura la instalación por copia tanto en el proyecto como en el lanzador.
 Esto evita el error **396** de OneDrive con vínculos permanentes. Si tu instalación
 anterior quedó incompleta, cierra Noiz y repite los comandos anteriores en la
-carpeta extraída de V6; uv completará las dependencias. No necesitas borrar el
+carpeta extraída de V7; uv completará las dependencias. No necesitas borrar el
 catálogo ni tus proyectos.
 
 No uses `/workspace/...` en tu PC: esa es la ubicación de la copia en la nube.
 
-## Probar el motor V6
+## Probar V7: yeso, cámara, lana y montantes
+
+1. Abre `examples/v7_double_steel.noiz.json` y pulsa **F5**. Es un ejemplo sintético
+   completo: no hace falta importar materiales ni completar campos para probarlo.
+2. En **Double → Frame 1**, revisa cámara, separación de montantes y relleno.
+   **Puente estructural…** muestra separación de fijaciones y flexibilidad de la
+   unión. El ejemplo usa un valor supuesto de demostración, no medido.
+3. Abre `examples/v7_double_timber.noiz.json` para el modelo de madera y
+   `examples/v7_single.noiz.json` para una sola hoja.
+4. Los valores TL aparecen a la derecha del gráfico, al mismo tiempo. Usa la
+   barra vertical de la tabla para consultar las 21 bandas. La rueda y el arrastre
+   no cambian los ejes; la leyenda permite ocultar curvas.
+5. Para tu construcción real, introduce resistividad documentada del relleno o
+   absorción de cámara, y en acero una flexibilidad representativa de la unión.
+   No deduzcas esos valores del nombre comercial del XML.
+6. Guarda con otro nombre. Los proyectos nuevos usan esquema 5; los proyectos
+   anteriores se abren conservando su modelo. V6 no lee el nuevo esquema.
+
+La correspondencia exacta con Strutt sigue pendiente de consulta directa. No se
+ha establecido un margen de error experimental. Consulta las
+[notas de V7](docs/release-v7.md) y [verificaciones](docs/v7-validation.md).
+
+## Reproducir el motor V6 anterior
 
 1. Abre `examples/v6_single.noiz.json` y pulsa **F5**. En **Dimensiones y
    condiciones de cálculo…** comprueba que está seleccionado el modo de tamaño
@@ -60,7 +82,7 @@ guarda una copia. Los archivos nuevos usan esquema 4; V5 no puede leer ese esque
 La corrección verificada es Davy, no Sewell. No hay todavía una tolerancia
 experimental demostrada para Noiz; consulta [evidencia V6](docs/v6-evidence.md).
 
-## Interfaz V6.1
+## Interfaz conservada y mejorada en V7
 
 Los controles y las listas ocupan menos espacio vertical. El gráfico no permite
 zoom, desplazamiento ni cambios manuales de ejes; el programa ajusta las escalas
@@ -87,13 +109,13 @@ registro los contiene. Los ocho XML de esta entrega no incluyen enlaces legibles
 a drawings/BIM: no se atribuye precisión de fabricante a las geometrías esquemáticas.
 
 Conserva tu carpeta anterior y sus materiales propios. Si utilizabas una biblioteca
-portátil, copia su carpeta `local_data` a la carpeta nueva: V6 la combina con
+portátil, copia su carpeta `local_data` a la carpeta nueva: V7 la combina con
 la base integrada sin sobrescribirla al abrir. Si hay varios catálogos portátiles,
 se elige `catalog-v5.json`, luego `catalog-v3.json` y luego `catalog.json`.
 Si configuraste `NOIZ_CATALOG_PATH`, esa variable selecciona una biblioteca aislada;
 para recuperar la carga normal en PowerShell ejecuta
 `Remove-Item Env:NOIZ_CATALOG_PATH -ErrorAction SilentlyContinue` antes de iniciar.
-Los proyectos anteriores y sus variantes se abren en V6 conservando su catálogo
+Los proyectos anteriores y sus variantes se abren en V7 conservando su catálogo
 y propiedades. La migración conserva también la elección del modelo anterior.
 
 ## Recorrido para comprobar la V5
@@ -209,8 +231,8 @@ Noiz-Transmission/
 └── .github/workflows/   CI para Windows y Linux
 ```
 
-El código V5 se publica en
-[`codex/noiz-transmission-v5`](https://github.com/oscargit010502/Noiz-Transmission/tree/codex/noiz-transmission-v5).
+El código V7 se publica en
+[`codex/noiz-transmission-v7`](https://github.com/oscargit010502/Noiz-Transmission/tree/codex/noiz-transmission-v7).
 Abre ese enlace para ver las carpetas. En la portada del repositorio, cambia
 **main** por esa rama. También puedes descargar **Code → Download ZIP**.
 Las versiones anteriores siguen en las ramas `codex/noiz-transmission-v2` y

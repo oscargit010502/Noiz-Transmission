@@ -1,0 +1,54 @@
+{
+  "version": "0.7.0",
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "python": "3.13.5",
+  "repeats": 5,
+  "scope": "predict_assembly including validation; no GUI/cache/export; synthetic cases",
+  "cases": [
+    {
+      "project": "examples/v7_single.noiz.json",
+      "model": "davy-single-double-1",
+      "seconds": [
+        0.18746705199737335,
+        0.18190384899935452,
+        0.18121986999904038,
+        0.17398149100336013,
+        0.16607004999968922
+      ],
+      "median_seconds": 0.18121986999904038,
+      "rw_db": 30,
+      "stc": 28,
+      "band_count": 21
+    },
+    {
+      "project": "examples/v7_double_timber.noiz.json",
+      "model": "davy-single-double-1",
+      "seconds": [
+        0.0038843479997012764,
+        0.0029142529965611175,
+        0.0028898759992443956,
+        0.0029655389953404665,
+        0.002842303001671098
+      ],
+      "median_seconds": 0.0029142529965611175,
+      "rw_db": 35,
+      "stc": 34,
+      "band_count": 21
+    },
+    {
+      "project": "examples/v7_double_steel.noiz.json",
+      "model": "davy-single-double-1",
+      "seconds": [
+        0.0033943469970836304,
+        0.0028488940006354824,
+        0.002830246005032677,
+        0.0027032739963033237,
+        0.003144791000522673
+      ],
+      "median_seconds": 0.0028488940006354824,
+      "rw_db": 41,
+      "stc": 40,
+      "band_count": 21
+    }
+  ]
+}

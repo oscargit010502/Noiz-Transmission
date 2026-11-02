@@ -32,6 +32,10 @@ def _historical_snapshot(project):
     del data["calculation_model"]
     for panel in data["panels"]:
         del panel["edge_loss_factor"]
+    for cavity in data["cavities"]:
+        for key in ("stud_configuration", "fastener_spacing_mm", "stud_attachment", "steel_gauge",
+                    "steel_section", "point_compliance_m_n", "line_compliance_m2_n", "cavity_absorption"):
+            del cavity[key]
     return data
 
 
@@ -55,7 +59,7 @@ def test_unknown_model_never_silently_falls_back(invalid):
         replace(default_project_v6(), calculation_model=invalid)
 
 
-def test_schema4_roundtrip_retains_model_per_panel_losses_and_variants(tmp_path):
+def test_current_schema_roundtrip_retains_v6_model_losses_and_variants(tmp_path):
     single = default_project_v6()
     active = replace(single, width_m=3.1, height_m=2.8,
                      panels=(replace(single.panels[0], edge_loss_factor=.015),))
@@ -67,7 +71,7 @@ def test_schema4_roundtrip_retains_model_per_panel_losses_and_variants(tmp_path)
     assert loaded == active
     assert variants == (legacy,)
     payload = json.loads(encoded)
-    assert payload["schema_version"] == 4
+    assert payload["schema_version"] == 5
     assert payload["model_name"] == FINITE_MODEL_ID
     assert payload["project"]["panels"][0]["edge_loss_factor"] == .015
     save_workspace(loaded, variants, path)
